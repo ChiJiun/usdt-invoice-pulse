@@ -120,3 +120,7 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          # GitHub Pages can remain deployment_queued during service backlogs.
+          # The action default is 10 minutes; allow 20 before cancelling.
+          timeout: 1200000
