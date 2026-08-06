@@ -70,6 +70,20 @@ class MaxAdapter(ExchangeAdapter):
         if missing:
             raise ValueError(f"MAX 缺少 GitHub Secrets：{', '.join(missing)}")
 
+    def verify_credentials(self) -> None:
+        """只驗證簽章與帳戶讀取權限，不送出訂單。"""
+        self._validate_credentials()
+        path = "/api/v3/info"
+        params = {"nonce": int(time.time() * 1000)}
+        response = self.http.request_json(
+            "GET",
+            f"{self.base_url}{path}",
+            params=params,
+            headers=self._auth_headers(params, path),
+        )
+        if not isinstance(response, dict):
+            raise RuntimeError("MAX 帳戶驗證回應格式不符預期")
+
     def run(self, *, live: bool):
         ask, minimum_base, minimum_quote = self._snapshot()
         target = self.settings.target_usdt
@@ -162,4 +176,3 @@ class MaxAdapter(ExchangeAdapter):
             "today_status": today_status,
             "note": "官方 API 可自動交易，但 USDT/TWD 單筆至少 8 USDT／新台幣 250 元。",
         }
-

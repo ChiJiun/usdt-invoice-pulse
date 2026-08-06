@@ -8,11 +8,15 @@ on:
     - cron: "17 1 * * *"
   workflow_dispatch:
     inputs:
-      live:
-        description: "送出真實訂單（仍需 LIVE_TRADING 與確認鎖）"
+      mode:
+        description: "執行模式"
         required: true
-        default: false
-        type: boolean
+        default: validate
+        type: choice
+        options:
+          - validate
+          - dry-run
+          - live
 
 concurrency:
   group: daily-usdt-and-pages
@@ -50,11 +54,16 @@ jobs:
       - name: Test purchase safeguards
         run: python -m unittest discover -s tests -p "test_*.py"
 
-      - name: Update daily records
+      - name: Validate API credentials or update daily records
         if: github.event_name != 'push'
         shell: bash
         run: |
-          if [[ "$LIVE_TRADING" == "true" ]] && { [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ inputs.live }}" == "true" ]]; }; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "validate" ]]; then
+            python -m bot.verify
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "live" && "$LIVE_TRADING" != "true" ]]; then
+            echo "LIVE_TRADING 尚未開啟，已拒絕真實下單。" >&2
+            exit 2
+          elif [[ "$LIVE_TRADING" == "true" ]] && { [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ inputs.mode }}" == "live" ]]; }; then
             python -m bot.runner --live
           else
             python -m bot.runner --dry-run
