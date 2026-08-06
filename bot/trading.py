@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING
 from typing import Literal
 
@@ -33,13 +32,6 @@ def effective_target(
     return round_quantity_up(max(configured_floor, minimum_base, quote_floor), step)
 
 
-@dataclass(frozen=True, slots=True)
-class TradeDecision:
-    side: TradeSide
-    required_twd: Decimal
-    sellable_usdt: Decimal
-
-
 def choose_trade_side(
     *,
     available_twd: Decimal,
@@ -48,20 +40,14 @@ def choose_trade_side(
     buy_price_twd: Decimal,
     buy_buffer_rate: Decimal,
     usdt_reserve: Decimal,
-) -> TradeDecision:
+) -> TradeSide:
     """Prefer BUY when TWD is sufficient, otherwise SELL when USDT is sufficient."""
     required_twd = target_usdt * buy_price_twd * (
         Decimal("1") + buy_buffer_rate
     )
     sellable_usdt = max(available_usdt - usdt_reserve, Decimal("0"))
     if available_twd >= required_twd:
-        side: TradeSide = "buy"
-    elif sellable_usdt >= target_usdt:
-        side = "sell"
-    else:
-        side = "none"
-    return TradeDecision(
-        side=side,
-        required_twd=required_twd,
-        sellable_usdt=sellable_usdt,
-    )
+        return "buy"
+    if sellable_usdt >= target_usdt:
+        return "sell"
+    return "none"

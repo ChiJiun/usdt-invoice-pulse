@@ -34,7 +34,7 @@
 | Variable | 建議初始值 | 用途 |
 | --- | --- | --- |
 | `ORDER_USDT` | `1` | 每家希望至少交易的 USDT；MAX 會自動提高到最低 8 USDT／NT$250 |
-| `USDT_RESERVE` | `0` | 賣出前保留的 USDT；例如 `20` 代表不動用最後 20 USDT |
+| `USDT_RESERVE` | `0` | 賣出安全緩衝；`0` 代表不保留，`20` 代表現貨與 MAX 閃兌都不動用最後 20 USDT |
 | `MAX_CONVERT_ENABLED` | `true` | MAX 現貨資金不足時，是否允許嘗試官方閃兌 |
 | `MAX_CONVERT_TWD_AMOUNT` | `10` | TWD → USDT 閃兌單次上限 |
 | `MAX_CONVERT_USDT_AMOUNT` | `1` | USDT → TWD 閃兌單次上限；仍會扣除 `USDT_RESERVE` |
@@ -171,6 +171,18 @@ Dashboard 的 `DAILY PULSE` 分開顯示：
 
 BitoPro 與 MAX 的交易 API 都不會回傳台灣電子發票號碼，因此不能只靠交易 API 自動確認開票。BitoPro 約兩天內通知，MAX 約 1–3 個工作天開立；「昨日尚未查到」不代表最終不會開立。
 
+### Email 自動核對可行性
+
+可以自動擷取兩家交易所寄來的發票信，但信箱授權方式必須依供應商實作；目前版本尚未連接信箱，也沒有任何 Email 密碼相關環境變數。
+
+- Gmail：使用 Gmail API 的唯讀 OAuth 與 refresh token，不保存 Google 密碼。
+- Outlook／Microsoft 365：使用 Microsoft Graph 的 `Mail.Read` OAuth，不使用已淘汰的基本帳密驗證。
+- 其他信箱：需確認是否提供 OAuth IMAP；不應把主要信箱密碼放入 GitHub Secrets。
+
+因為開票會延遲，未來的自動核對不應只搜尋「昨天收到的信」，而會每天回查最近 7 天仍待確認的成交，限制寄件者與主旨，再把解析出的開立日、金額、遮罩發票號碼與檢查時間寫入 `data/invoice-records.json`。原始信件、完整號碼、隨機碼、載具與 OAuth access token 都不會發布到 Pages；無法唯一對應成交日時標示 `manual_check`，不會猜測。
+
+正式加入前需要先決定收信信箱是 Gmail、Outlook 或其他服務，才能採用正確的 OAuth 流程與最小權限。官方參考：[Gmail API](https://developers.google.com/workspace/gmail/api/guides)、[Gmail 伺服器端 OAuth](https://developers.google.com/workspace/gmail/api/auth/web-server)、[Microsoft Graph／Exchange 開發建議](https://learn.microsoft.com/en-us/Exchange/client-developer/exchange-server-development)。
+
 ### 更新發票紀錄
 
 以成交日作為 `trade_date`，編輯 `data/invoice-records.json`：
@@ -261,6 +273,7 @@ npm test
 | `LIVE_TRADING 尚未開啟` | workflow 選了 live，但 Variable 仍是 `false` |
 | `Unauthorized api key`／簽章失敗 | 檢查 Secret、BitoPro Email、權限與 Key 是否過期；不要把值貼到 log |
 | 餘額不足而略過 | TWD 不足，扣除保留量後的 USDT 也不足；MAX 可能同時沒有可用閃兌額 |
+| `USDT_RESERVE` 要設多少 | 它不是交易所門檻，只是防止程式賣光 USDT；不需要保留量就維持 `0` |
 | 今日已有正式成交 | 防重複機制生效，會沿用既有結果而不再下單 |
 | deploy 顯示 skipped | 手動 workflow 選的 Branch 不是 `main` |
 | Pages 404 或仍是舊版 | 確認 deploy job 成功，從 Settings → Pages 的 **Visit site** 開啟並等待快取更新 |
@@ -268,7 +281,7 @@ npm test
 
 ## 官方參考
 
-- [BitoPro 官方 API](https://github.com/bitoex/bitopro-offical-api-docs)
+- [BitoPro 官方 API](https://github.com/bitoex/bitopro-official-api-docs)
 - [BitoPro 發票規則](https://support.bitopro.com/hc/zh-tw/articles/360001517911)
 - [MAX API 文件](https://max-api.maicoin.com/doc/v3.html)
 - [MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074)

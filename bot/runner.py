@@ -24,12 +24,8 @@ INVOICE_LOOKUP_URLS = {
     "max": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
 }
 INVOICE_STATUS_MAP = {
-    "pending": "pending_confirmation",
     "pending_confirmation": "pending_confirmation",
-    "issued": "confirmed",
     "confirmed": "confirmed",
-    "won": "confirmed",
-    "not_won": "confirmed",
     "not_found": "not_found",
     "manual_check": "manual_check",
 }
@@ -106,7 +102,6 @@ def make_duplicate_result(adapter: Any, record: dict[str, Any]) -> RunResult:
         invoice_status="pending_confirmation",
         message="repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
         live=True,
-        reference_hash=record.get("reference_hash"),
     )
 
 
@@ -219,6 +214,22 @@ def preferred_event(
     )
 
 
+def refreshed_exchange_status(adapter: Any, existing: dict[str, Any]) -> dict[str, object]:
+    """Rebuild the public shape while retaining the last market-derived values."""
+    status = adapter.public_status(str(existing.get("today_status", "waiting")))
+    for field in (
+        "minimum_usdt",
+        "minimum_twd",
+        "planned_usdt",
+        "target_eligible",
+        "today_status",
+        "note",
+    ):
+        if field in existing:
+            status[field] = existing[field]
+    return status
+
+
 def invoice_for_trade_date(
     records: list[dict[str, Any]], date_text: str, exchange: str
 ) -> dict[str, Any] | None:
@@ -313,11 +324,8 @@ def run_all(
     state = read_json(settings.state_path, {"version": 1, "live_runs": {}})
     existing_dashboard = read_json(settings.dashboard_path, {"events": []})
     raw_invoice_records = read_json(settings.invoice_records_path, [])
-    legacy_confirmed = read_json(settings.confirmed_invoices_path, [])
     if not isinstance(raw_invoice_records, list):
         raw_invoice_records = []
-    if not isinstance(legacy_confirmed, list):
-        legacy_confirmed = []
 
     adapters = []
     if settings.bitopro_enabled:
@@ -330,12 +338,7 @@ def run_all(
         for adapter in adapters
         for value in (adapter.id, adapter.name, adapter.short_name)
     }
-    invoice_records = normalize_invoice_records(
-        [*raw_invoice_records, *legacy_confirmed], exchange_aliases
-    )
-    confirmed = [
-        invoice for invoice in invoice_records if invoice["status"] == "confirmed"
-    ]
+    invoice_records = normalize_invoice_records(raw_invoice_records, exchange_aliases)
 
     results: list[RunResult] = []
     if not refresh_only:
@@ -359,7 +362,6 @@ def run_all(
                     "execution_type": result.execution_type,
                     "filled_usdt": decimal_text(result.filled_usdt),
                     "avg_price_twd": decimal_text(result.avg_price_twd),
-                    "reference_hash": result.reference_hash,
                 }
 
     new_events = [result.to_public_dict(event_id(result)) for result in results]
@@ -389,7 +391,7 @@ def run_all(
         if exchange.get("id") in supported_exchange_ids
     }
     exchange_statuses = [
-        existing_exchange_statuses[adapter.id]
+        refreshed_exchange_status(adapter, existing_exchange_statuses[adapter.id])
         if refresh_only and adapter.id in existing_exchange_statuses
         else adapter.public_status(today_status.get(adapter.id, "waiting"))
         for adapter in adapters
@@ -405,15 +407,6 @@ def run_all(
         (Decimal(str(event.get("filled_usdt", "0"))) for event in filled_events),
         Decimal("0"),
     )
-    total_notional = sum(
-        (
-            Decimal(str(event.get("filled_usdt", "0")))
-            * Decimal(str(event.get("avg_price_twd") or "0"))
-            for event in filled_events
-        ),
-        Decimal("0"),
-    )
-
     dashboard = {
         "generated_at": current.isoformat(timespec="seconds"),
         "local_date": today,
@@ -431,20 +424,12 @@ def run_all(
             "target_eligible": sum(
                 1 for exchange in exchange_statuses if exchange["target_eligible"]
             ),
-            "filled_runs": sum(
-                1 for event in events if event.get("status") in {"filled", "partial"}
-            ),
-            "skipped_runs": sum(
-                1 for event in events if event.get("status") == "skipped"
-            ),
-            "confirmed_invoices": len(confirmed),
             "pending_invoice_checks": sum(
                 1
                 for event in events
                 if event.get("invoice_status") == "pending_confirmation"
             ),
             "total_filled_usdt": decimal_text(total_filled),
-            "total_notional_twd": decimal_text(total_notional),
             "today_trades": sum(
                 1
                 for row in daily_status["exchanges"]
@@ -460,7 +445,6 @@ def run_all(
         "events": events,
         "daily_status": daily_status,
         "invoice_records": invoice_records,
-        "confirmed_invoices": confirmed,
     }
     write_json(settings.dashboard_path, dashboard)
     if live:

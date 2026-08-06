@@ -57,7 +57,6 @@ class Settings:
     dashboard_path: Path
     state_path: Path
     invoice_records_path: Path
-    confirmed_invoices_path: Path
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -83,9 +82,6 @@ class Settings:
             state_path=Path(os.getenv("STATE_PATH", "data/state.json")),
             invoice_records_path=Path(
                 os.getenv("INVOICE_RECORDS_PATH", "data/invoice-records.json")
-            ),
-            confirmed_invoices_path=Path(
-                os.getenv("CONFIRMED_INVOICES_PATH", "data/confirmed-invoices.json")
             ),
         )
 

@@ -9,8 +9,6 @@ export type TradeSide = "buy" | "sell" | "none";
 export type ExecutionType = "spot" | "convert" | "none";
 
 export type InvoiceStatus =
-  | "estimated_zero"
-  | "estimated_eligible"
   | "pending_confirmation"
   | "confirmed"
   | "not_found"
@@ -24,13 +22,11 @@ export interface ExchangeStatus {
   name: string;
   short_name: string;
   accent: string;
-  api_status: "available";
   minimum_usdt: string;
   minimum_twd: string | null;
   planned_usdt: string;
   convert_supported: boolean;
   target_eligible: boolean;
-  invoice_rule: string;
   today_status: RunStatus | "waiting";
   note: string;
 }
@@ -105,12 +101,8 @@ export interface DashboardData {
   summary: {
     exchanges_total: number;
     target_eligible: number;
-    filled_runs: number;
-    skipped_runs: number;
-    confirmed_invoices: number;
     pending_invoice_checks: number;
     total_filled_usdt: string;
-    total_notional_twd: string;
     today_trades: number;
     yesterday_invoices_issued: number;
   };
@@ -118,5 +110,4 @@ export interface DashboardData {
   events: RunEvent[];
   daily_status: DailyStatus;
   invoice_records: InvoiceRecord[];
-  confirmed_invoices: InvoiceRecord[];
 }

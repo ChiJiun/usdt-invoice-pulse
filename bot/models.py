@@ -9,8 +9,6 @@ from bot.trading import TradeSide
 
 RunStatus = Literal["simulated", "filled", "partial", "skipped", "failed"]
 InvoiceStatus = Literal[
-    "estimated_zero",
-    "estimated_eligible",
     "pending_confirmation",
     "confirmed",
     "not_applicable",
@@ -41,11 +39,9 @@ class RunResult:
     mode: Literal["dry_run", "live"]
     occurred_at: str
     local_date: str
-    reference_hash: str | None = None
 
     def to_public_dict(self, event_id: str) -> dict[str, object]:
         payload = asdict(self)
-        payload.pop("reference_hash", None)
         payload["id"] = event_id
         payload["date"] = payload.pop("local_date")
         for field in ("requested_usdt", "filled_usdt", "avg_price_twd"):

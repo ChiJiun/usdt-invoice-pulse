@@ -12,7 +12,6 @@ import type {
 } from "./types";
 
 const SUPPORTED_EXCHANGE_IDS = new Set(["bitopro", "max"]);
-const SUPPORTED_INVOICE_NAMES = new Set(["bitopro", "max", "max exchange"]);
 const DEPLOYMENT_GUIDE_URL =
   "https://github.com/ChiJiun/usdt-invoice-pulse#github-actions-%E8%88%87-pages-%E5%AE%8C%E6%95%B4%E9%83%A8%E7%BD%B2";
 
@@ -25,12 +24,8 @@ const fallbackData: DashboardData = {
   summary: {
     exchanges_total: 2,
     target_eligible: 2,
-    filled_runs: 0,
-    skipped_runs: 0,
-    confirmed_invoices: 0,
     pending_invoice_checks: 0,
     total_filled_usdt: "0",
-    total_notional_twd: "0",
     today_trades: 0,
     yesterday_invoices_issued: 0,
   },
@@ -42,7 +37,6 @@ const fallbackData: DashboardData = {
     exchanges: [],
   },
   invoice_records: [],
-  confirmed_invoices: [],
 };
 
 const statusLabels: Record<RunStatus | "waiting", string> = {
@@ -55,8 +49,6 @@ const statusLabels: Record<RunStatus | "waiting", string> = {
 };
 
 const invoiceLabels: Record<InvoiceStatus, string> = {
-  estimated_zero: "預估零元",
-  estimated_eligible: "預估可開立",
   pending_confirmation: "成交待確認",
   confirmed: "已確認",
   not_found: "尚未查到",
@@ -127,11 +119,8 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       execution_type:
         event.execution_type ?? (event.status === "skipped" ? "none" : "spot"),
     }));
-  const invoiceRecords = (payload.invoice_records ?? payload.confirmed_invoices ?? []).filter((invoice) =>
-    SUPPORTED_INVOICE_NAMES.has(invoice.exchange.toLowerCase()),
-  );
-  const confirmedInvoices = invoiceRecords.filter(
-    (invoice) => invoice.status === "confirmed",
+  const invoiceRecords = (payload.invoice_records ?? []).filter((invoice) =>
+    SUPPORTED_EXCHANGE_IDS.has(invoice.exchange.toLowerCase()),
   );
   const dailyStatus = payload.daily_status ?? fallbackData.daily_status;
   const dailyExchanges = dailyStatus.exchanges.filter((row) =>
@@ -144,32 +133,20 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
     (sum, event) => sum + Number(event.filled_usdt || 0),
     0,
   );
-  const totalNotional = countedEvents.reduce(
-    (sum, event) =>
-      sum + Number(event.filled_usdt || 0) * Number(event.avg_price_twd || 0),
-    0,
-  );
-
   return {
     ...payload,
     exchanges,
     events,
     daily_status: { ...dailyStatus, exchanges: dailyExchanges },
     invoice_records: invoiceRecords,
-    confirmed_invoices: confirmedInvoices,
     summary: {
       ...payload.summary,
       exchanges_total: exchanges.length,
       target_eligible: exchanges.filter((exchange) => exchange.target_eligible).length,
-      filled_runs: events.filter((event) => ["filled", "partial"].includes(event.status))
-        .length,
-      skipped_runs: events.filter((event) => event.status === "skipped").length,
-      confirmed_invoices: confirmedInvoices.length,
       pending_invoice_checks: events.filter(
         (event) => event.invoice_status === "pending_confirmation",
       ).length,
       total_filled_usdt: String(totalFilled),
-      total_notional_twd: String(totalNotional),
       today_trades: dailyExchanges.filter((row) =>
         ["filled", "partial"].includes(row.today_trade.status),
       ).length,
@@ -581,7 +558,7 @@ function App() {
               <p className="eyebrow">INVOICE LEDGER</p>
               <h2>發票確認紀錄</h2>
             </div>
-            <p>只顯示遮罩號碼、安全 HTTPS 連結與人工確認備註；完整私人資料不會進入 Pages。</p>
+            <p>目前由安全紀錄檔確認；尚未連接信箱。Pages 只顯示遮罩號碼、HTTPS 連結與備註。</p>
           </div>
           {data.invoice_records.length ? (
             <div className="invoice-record-grid">
@@ -592,7 +569,7 @@ function App() {
             </div>
           ) : (
             <div className="empty-state invoice-empty">
-              尚未加入發票確認紀錄；成交後可更新 data/invoice-records.json。
+              尚未加入發票確認紀錄；成交後可更新 data/invoice-records.json，或依信箱服務加入唯讀 OAuth 核對。
             </div>
           )}
         </section>

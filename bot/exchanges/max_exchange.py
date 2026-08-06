@@ -20,11 +20,9 @@ class MaxAdapter(ExchangeAdapter):
     name = "MAX Exchange"
     short_name = "MAX"
     accent = "#1aa679"
-    api_status = "available"
     minimum_usdt = Decimal("8")
     minimum_twd = Decimal("250")
     planned_usdt = Decimal("8")
-    invoice_rule = "現貨或閃兌有成交即列為待確認；以實際電子發票為準"
     base_url = "https://max-api.maicoin.com"
     market = "usdttwd"
 
@@ -169,7 +167,6 @@ class MaxAdapter(ExchangeAdapter):
         price = Decimal(str(trade.get("price", "0")))
         if not price and filled > 0:
             price = funds / filled
-        identifier = str(trade.get("id") or trade.get("order_id") or "")
         return self.base_result(
             status="filled",
             side=side,
@@ -180,11 +177,6 @@ class MaxAdapter(ExchangeAdapter):
             invoice_status="pending_confirmation",
             message="官方 API 偵測到今日已有 USDT/TWD 現貨成交，已沿用紀錄並停止新增訂單",
             live=True,
-            reference_hash=(
-                hashlib.sha256(identifier.encode()).hexdigest()[:10]
-                if identifier
-                else None
-            ),
         )
 
     def _convert_result(self, order: dict[str, Any], *, message: str):
@@ -203,7 +195,6 @@ class MaxAdapter(ExchangeAdapter):
         else:
             raise RuntimeError("MAX 閃兌結果不是 USDT/TWD")
 
-        serial = str(order.get("sn", ""))
         return self.base_result(
             status="filled" if filled_usdt > 0 else "failed",
             side=side,
@@ -216,9 +207,6 @@ class MaxAdapter(ExchangeAdapter):
             ),
             message=message,
             live=True,
-            reference_hash=(
-                hashlib.sha256(serial.encode()).hexdigest()[:10] if serial else None
-            ),
         )
 
     def _run_convert_fallback(
@@ -339,7 +327,7 @@ class MaxAdapter(ExchangeAdapter):
         balances = self._account_balances()
         available_twd = self._available_balance(balances, "twd")
         available_usdt = self._available_balance(balances, "usdt")
-        decision = choose_trade_side(
+        side = choose_trade_side(
             available_twd=available_twd,
             available_usdt=available_usdt,
             target_usdt=target,
@@ -349,14 +337,13 @@ class MaxAdapter(ExchangeAdapter):
             ),
             usdt_reserve=self.settings.usdt_reserve,
         )
-        if decision.side == "none":
+        if side == "none":
             return self._run_convert_fallback(
                 balances,
                 target=target,
                 reference_price=ask,
             )
 
-        side = decision.side
         path = "/api/v3/wallet/spot/order"
         client_oid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"max-{self.now().date()}"))
         body = {
@@ -409,7 +396,6 @@ class MaxAdapter(ExchangeAdapter):
             ),
             message=f"{'買入' if side == 'buy' else '賣出'}：{message}",
             live=True,
-            reference_hash=hashlib.sha256(client_oid.encode()).hexdigest()[:10],
         )
 
     def public_status(self, today_status: str = "waiting") -> dict[str, object]:
@@ -418,7 +404,6 @@ class MaxAdapter(ExchangeAdapter):
             "name": self.name,
             "short_name": self.short_name,
             "accent": self.accent,
-            "api_status": self.api_status,
             "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": str(self.minimum_twd),
             "planned_usdt": str(self.planned_usdt),
@@ -427,7 +412,6 @@ class MaxAdapter(ExchangeAdapter):
                 self.planned_usdt >= self.minimum_usdt
                 and self.planned_usdt > Decimal("0")
             ),
-            "invoice_rule": self.invoice_rule,
             "today_status": today_status,
             "note": (
                 "只做 USDT/TWD；目前最低 "

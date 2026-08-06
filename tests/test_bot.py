@@ -40,7 +40,6 @@ def settings(target: str = "1") -> Settings:
         dashboard_path=root / "dashboard.json",
         state_path=root / "state.json",
         invoice_records_path=root / "invoice-records.json",
-        confirmed_invoices_path=root / "invoices.json",
     )
 
 
@@ -234,9 +233,9 @@ class RuleTests(unittest.TestCase):
             buy_buffer_rate=Decimal("0.01"),
             usdt_reserve=Decimal("1"),
         )
-        self.assertEqual(buy.side, "buy")
-        self.assertEqual(sell.side, "sell")
-        self.assertEqual(skipped.side, "none")
+        self.assertEqual(buy, "buy")
+        self.assertEqual(sell, "sell")
+        self.assertEqual(skipped, "none")
 
     def test_bitopro_live_falls_back_to_sell(self):
         configured = replace(
@@ -436,7 +435,7 @@ class DashboardPolicyTests(unittest.TestCase):
                     "id": "sample",
                     "exchange": "BitoPro",
                     "trade_date": "2026-08-05",
-                    "status": "issued",
+                    "status": "confirmed",
                     "masked_number": "AB12345678",
                     "detail_url": "https://example.com/invoice?token=secret",
                 }

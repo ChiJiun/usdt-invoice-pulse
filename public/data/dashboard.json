@@ -1,18 +1,14 @@
 {
-  "generated_at": "2026-08-06T23:14:22+08:00",
-  "local_date": "2026-08-06",
+  "generated_at": "2026-08-07T00:00:23+08:00",
+  "local_date": "2026-08-07",
   "timezone": "Asia/Taipei",
   "mode": "dry_run",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "filled_runs": 0,
-    "skipped_runs": 0,
-    "confirmed_invoices": 0,
     "pending_invoice_checks": 0,
     "total_filled_usdt": "9",
-    "total_notional_twd": "290.37",
     "today_trades": 0,
     "yesterday_invoices_issued": 0
   },
@@ -22,13 +18,11 @@
       "name": "BitoPro",
       "short_name": "BP",
       "accent": "#2f6bff",
-      "api_status": "available",
       "minimum_usdt": "1",
       "minimum_twd": null,
       "planned_usdt": "1",
       "convert_supported": false,
       "target_eligible": true,
-      "invoice_rule": "有成交即列為待確認；是否開立與金額以實際電子發票為準",
       "today_status": "simulated",
       "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。"
     },
@@ -37,13 +31,11 @@
       "name": "MAX Exchange",
       "short_name": "MAX",
       "accent": "#1aa679",
-      "api_status": "available",
       "minimum_usdt": "8.0",
       "minimum_twd": "250.0",
       "planned_usdt": "8.0",
       "convert_supported": true,
       "target_eligible": true,
-      "invoice_rule": "現貨或閃兌有成交即列為待確認；以實際電子發票為準",
       "today_status": "simulated",
       "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元；現貨資金不足時可改試低額閃兌。"
     }
@@ -83,8 +75,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-08-06",
-    "yesterday_date": "2026-08-05",
+    "today_date": "2026-08-07",
+    "yesterday_date": "2026-08-06",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -92,12 +84,12 @@
         "short_name": "BP",
         "accent": "#2f6bff",
         "today_trade": {
-          "status": "simulated",
-          "side": "buy",
-          "execution_type": "spot",
-          "filled_usdt": "1",
-          "message": "已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
-          "source": "dry_run"
+          "status": "no_record",
+          "side": "none",
+          "execution_type": "none",
+          "filled_usdt": "0",
+          "message": "今日尚未執行或保存成交檢查",
+          "source": "none"
         },
         "yesterday_invoice": {
           "status": "not_applicable",
@@ -116,12 +108,12 @@
         "short_name": "MAX",
         "accent": "#1aa679",
         "today_trade": {
-          "status": "simulated",
-          "side": "buy",
-          "execution_type": "spot",
-          "filled_usdt": "8",
-          "message": "已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
-          "source": "dry_run"
+          "status": "no_record",
+          "side": "none",
+          "execution_type": "none",
+          "filled_usdt": "0",
+          "message": "今日尚未執行或保存成交檢查",
+          "source": "none"
         },
         "yesterday_invoice": {
           "status": "not_applicable",
@@ -136,6 +128,5 @@
       }
     ]
   },
-  "invoice_records": [],
-  "confirmed_invoices": []
+  "invoice_records": []
 }

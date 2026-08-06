@@ -18,9 +18,7 @@ class ExchangeAdapter(ABC):
     name: str
     short_name: str
     accent: str
-    api_status: str
     minimum_usdt: Decimal
-    invoice_rule: str
 
     def __init__(self, settings: Settings, http: HttpClient | None = None) -> None:
         self.settings = settings
@@ -42,7 +40,6 @@ class ExchangeAdapter(ABC):
         invoice_status: str = "not_applicable",
         message: str,
         live: bool,
-        reference_hash: str | None = None,
     ) -> RunResult:
         current = self.now()
         return RunResult(
@@ -59,7 +56,6 @@ class ExchangeAdapter(ABC):
             mode="live" if live else "dry_run",
             occurred_at=current.isoformat(timespec="seconds"),
             local_date=current.date().isoformat(),
-            reference_hash=reference_hash,
         )
 
     @abstractmethod
