@@ -14,7 +14,7 @@ const fallbackData: DashboardData = {
   mode: "dry_run",
   target_usdt: "1",
   summary: {
-    exchanges_total: 3,
+    exchanges_total: 2,
     target_eligible: 1,
     filled_runs: 0,
     skipped_runs: 0,
@@ -75,7 +75,7 @@ function ExchangeCard({ exchange }: { exchange: ExchangeStatus }) {
         </span>
       </div>
       <div>
-        <p className="eyebrow">{exchange.api_status === "available" ? "官方 API" : "無公開 API"}</p>
+        <p className="eyebrow">官方私人交易 API</p>
         <h3>{exchange.name}</h3>
       </div>
       <div className="limit-row">
@@ -187,7 +187,7 @@ function App() {
             <div>
               <p className="eyebrow">TODAY'S READINESS</p>
               <h2>只有 BitoPro 可用 1 USDT 下單</h2>
-              <p>MAX 至少 8 U；HOYA BIT 至少 10 U，且未提供公開交易 API。</p>
+              <p>MAX 具備官方 API，但最低須達 8 U 與 NT$250；其他無法程式下單的平台不列入。</p>
             </div>
           </aside>
         </div>
@@ -227,9 +227,9 @@ function App() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">EXCHANGE CHECK</p>
-              <h2>三家交易所，逐一過門檻</h2>
+              <h2>兩家可程式交易所，逐一過門檻</h2>
             </div>
-            <p>機器只會執行符合官方規則的訂單，不自動放大購買金額。</p>
+            <p>Dashboard 只顯示具備官方私人下單 API 的平台。</p>
           </div>
           <div className="exchange-grid">
             {data.exchanges.map((exchange) => (

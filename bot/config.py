@@ -31,7 +31,6 @@ class Settings:
     live_confirmation: str
     bitopro_enabled: bool
     max_enabled: bool
-    hoyabit_enabled: bool
     bitopro_email: str
     bitopro_api_key: str
     bitopro_api_secret: str
@@ -52,7 +51,6 @@ class Settings:
             live_confirmation=os.getenv("CONFIRM_LIVE_TRADING", ""),
             bitopro_enabled=env_bool("BITOPRO_ENABLED", True),
             max_enabled=env_bool("MAX_ENABLED", True),
-            hoyabit_enabled=env_bool("HOYABIT_ENABLED", True),
             bitopro_email=os.getenv("BITOPRO_EMAIL", ""),
             bitopro_api_key=os.getenv("BITOPRO_API_KEY", ""),
             bitopro_api_secret=os.getenv("BITOPRO_API_SECRET", ""),

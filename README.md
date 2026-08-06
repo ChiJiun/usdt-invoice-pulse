@@ -1,8 +1,8 @@
 # 一塊日常：每日 USDT 成交與發票 Dashboard
 
-這是一個以安全為預設的 GitHub Actions 自動化專案。它每天檢查 BitoPro、MAX、HOYA BIT 的官方門檻，符合規則時才允許下單，並把去識別化結果發布到 GitHub Pages。
+這是一個以安全為預設的 GitHub Actions 自動化專案。它每天檢查 BitoPro 與 MAX 的官方門檻，符合規則時才允許下單，並把去識別化結果發布到 GitHub Pages。
 
-> 重要：目前「每天每家買 1 USDT」並不能在三家交易所都執行，也不能保證取得可兌獎發票。程式不會為了通過門檻而擅自把 1 USDT 放大。
+> 重要：Dashboard 只納入具有官方私人下單 API、可由程式安全執行的交易所。沒有官方下單 API 的平台不會執行，也不會顯示。
 
 ## 2026-08 可行性
 
@@ -10,9 +10,8 @@
 | --- | --- | --- | --- |
 | BitoPro | 可用限價單 | 有 | 發票依每日手續費彙總；1 USDT 手續費通常未滿 1 元，可能是零元發票 |
 | MAX | 不可，最低 8 USDT 且須達 NT$250 | 有 | 依每日實收手續費彙總，四捨五入滿 1 元才開立 |
-| HOYA BIT | 不可，最低 10 USDT／NT$300 | 未查到官方公開交易 API | 不使用帳密與瀏覽器模擬登入 |
 
-交易所可能隨時調整費率、限額與 API。BitoPro 與 MAX 的門檻會在每次執行時重新從官方公開 API 讀取；HOYA BIT 目前採保守停用。
+交易所可能隨時調整費率、限額與 API。BitoPro 與 MAX 的門檻會在每次執行時重新從官方公開 API 讀取。MaiCoin、HOYA BIT、XREX、ZONE Wallet、TWEX、Chainss／Atrix、KryptoGO 等未提供一般會員官方私人下單 API 的平台均排除，不使用帳密、瀏覽器模擬登入或未公開端點。
 
 ## 安全設計
 
@@ -53,7 +52,6 @@ GitHub Free 的 Pages 需使用公開 repository，因此 dashboard 也會公開
    - `LIVE_TRADING` = `false`
    - `BITOPRO_ENABLED` = `true`
    - `MAX_ENABLED` = `true`
-   - `HOYABIT_ENABLED` = `true`
 4. 先到 **Actions → Daily purchase and dashboard → Run workflow**，選擇 `dry-run` 執行一次。
 5. 確認 dashboard 與 Actions 紀錄無誤後，再決定是否啟用真實 BitoPro 下單。
 
@@ -97,11 +95,10 @@ GitHub Free 的 Pages 需使用公開 repository，因此 dashboard 也會公開
 
 首單成功後，每日台北時間 09:17 的排程會自動以真實模式執行。若要立即停止，將 `LIVE_TRADING` 改回 `false`；不需要刪除程式。
 
-## MAX 與 HOYA BIT
+## MAX
 
 - `ORDER_USDT=1` 時可保持 `MAX_ENABLED=true` 以在 dashboard 顯示門檻狀態；程式會在驗證憑證或送單前先略過 MAX。MAX 目前官方門檻是至少 8 USDT 且至少 NT$250，所以無法執行 1 USDT 真實單。
 - 現行程式的 `ORDER_USDT` 會同時套用到所有啟用的交易所；若改成 `8`並啟用 MAX，BitoPro 也會買 8 USDT。若你要不同交易所不同金額，應先把設定拆分後再上線。
-- HOYA BIT 目前無法用這個安全的公開 API 流程自動下單，且單筆最低約 10 USDT／NT$300。本專案不會儲存交易所密碼或模擬瀏覽器登入。
 
 ## 發票狀態的限制
 

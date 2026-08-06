@@ -36,7 +36,6 @@ jobs:
       CONFIRM_LIVE_TRADING: ${{ secrets.CONFIRM_LIVE_TRADING }}
       BITOPRO_ENABLED: ${{ vars.BITOPRO_ENABLED || 'true' }}
       MAX_ENABLED: ${{ vars.MAX_ENABLED || 'true' }}
-      HOYABIT_ENABLED: ${{ vars.HOYABIT_ENABLED || 'true' }}
       BITOPRO_EMAIL: ${{ secrets.BITOPRO_EMAIL }}
       BITOPRO_API_KEY: ${{ secrets.BITOPRO_API_KEY }}
       BITOPRO_API_SECRET: ${{ secrets.BITOPRO_API_SECRET }}
