@@ -29,6 +29,7 @@ permissions:
 
 jobs:
   build:
+    name: Build, update data, and upload Pages artifact
     runs-on: ubuntu-latest
     env:
       ORDER_USDT: ${{ vars.ORDER_USDT || '1' }}
@@ -42,18 +43,20 @@ jobs:
       MAX_API_KEY: ${{ secrets.MAX_API_KEY }}
       MAX_API_SECRET: ${{ secrets.MAX_API_SECRET }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out repository
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Test purchase safeguards
         run: python -m unittest discover -s tests -p "test_*.py"
 
-      - name: Validate API credentials or update daily records
+      - name: Run selected automation mode
         if: github.event_name != 'push'
         shell: bash
         run: |
@@ -81,12 +84,14 @@ jobs:
           git commit -m "chore: update daily purchase dashboard"
           git push
 
-      - uses: actions/setup-node@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
 
-      - uses: actions/configure-pages@v5
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
         id: pages
         with:
           enablement: true
@@ -98,11 +103,13 @@ jobs:
           npm ci
           npm run build
 
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
+    name: Deploy dashboard to GitHub Pages
     if: github.ref == 'refs/heads/main'
     environment:
       name: github-pages
