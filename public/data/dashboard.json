@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-08-06T17:43:38+08:00",
+  "local_date": "2026-08-06",
+  "timezone": "Asia/Taipei",
+  "mode": "dry_run",
+  "target_usdt": "1",
+  "summary": {
+    "exchanges_total": 3,
+    "target_eligible": 1,
+    "filled_runs": 0,
+    "skipped_runs": 2,
+    "confirmed_invoices": 0,
+    "eligible_invoice_estimates": 0,
+    "total_filled_usdt": "1",
+    "total_spend_twd": "32.266"
+  },
+  "exchanges": [
+    {
+      "id": "bitopro",
+      "name": "BitoPro",
+      "short_name": "BP",
+      "accent": "#2f6bff",
+      "api_status": "available",
+      "minimum_usdt": "1",
+      "target_eligible": true,
+      "invoice_rule": "依每日成交手續費彙總；未滿一元可能為零元發票",
+      "today_status": "simulated",
+      "note": "唯一可用 1 USDT 限價單執行的交易所；手續費仍可能不足一元。"
+    },
+    {
+      "id": "max",
+      "name": "MAX Exchange",
+      "short_name": "MAX",
+      "accent": "#1aa679",
+      "api_status": "available",
+      "minimum_usdt": "8.0",
+      "target_eligible": false,
+      "invoice_rule": "依每日實收交易手續費彙總，四捨五入滿一元才開立",
+      "today_status": "skipped",
+      "note": "官方 API 可自動交易，但 USDT/TWD 單筆至少 8 USDT／新台幣 250 元。"
+    },
+    {
+      "id": "hoyabit",
+      "name": "HOYA BIT",
+      "short_name": "HY",
+      "accent": "#ef693c",
+      "api_status": "unavailable",
+      "minimum_usdt": "10",
+      "target_eligible": false,
+      "invoice_rule": "交易成功後依實收費用開立；實際狀態需由平台或載具確認",
+      "today_status": "skipped",
+      "note": "最低 10 USDT，且目前沒有官方公開交易 API；為保護帳號而停用自動化。"
+    }
+  ],
+  "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "simulated",
+      "requested_usdt": "1",
+      "filled_usdt": "1",
+      "avg_price_twd": "32.266",
+      "fee_twd": "0.064532",
+      "invoice_status": "estimated_zero",
+      "message": "符合最低門檻；模擬限價吃單，未送出真實訂單",
+      "mode": "dry_run",
+      "occurred_at": "2026-08-06T17:43:39+08:00",
+      "id": "e8e842a607c16434",
+      "date": "2026-08-06"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "skipped",
+      "requested_usdt": "1",
+      "filled_usdt": "0",
+      "avg_price_twd": "32.263",
+      "fee_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "官方最低為 8.0 USDT 且須達 NT$ 250.0",
+      "mode": "dry_run",
+      "occurred_at": "2026-08-06T17:43:39+08:00",
+      "id": "7e0574c7d002904c",
+      "date": "2026-08-06"
+    },
+    {
+      "exchange": "hoyabit",
+      "exchange_name": "HOYA BIT",
+      "status": "skipped",
+      "requested_usdt": "1",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "fee_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "官方最低下單量為 10 USDT／等值新台幣 300 元",
+      "mode": "dry_run",
+      "occurred_at": "2026-08-06T17:43:39+08:00",
+      "id": "bc1b5a3a7efb2d8f",
+      "date": "2026-08-06"
+    }
+  ],
+  "confirmed_invoices": []
+}

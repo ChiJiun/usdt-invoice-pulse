@@ -1,0 +1,105 @@
+name: Daily purchase and dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 01:17 UTC = 09:17 Asia/Taipei. Avoiding minute 00 reduces queue delays.
+    - cron: "17 1 * * *"
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "送出真實訂單（仍需 LIVE_TRADING 與確認鎖）"
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: daily-usdt-and-pages
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ORDER_USDT: ${{ vars.ORDER_USDT || '1' }}
+      LIVE_TRADING: ${{ vars.LIVE_TRADING || 'false' }}
+      CONFIRM_LIVE_TRADING: ${{ secrets.CONFIRM_LIVE_TRADING }}
+      BITOPRO_ENABLED: ${{ vars.BITOPRO_ENABLED || 'true' }}
+      MAX_ENABLED: ${{ vars.MAX_ENABLED || 'true' }}
+      HOYABIT_ENABLED: ${{ vars.HOYABIT_ENABLED || 'true' }}
+      BITOPRO_EMAIL: ${{ secrets.BITOPRO_EMAIL }}
+      BITOPRO_API_KEY: ${{ secrets.BITOPRO_API_KEY }}
+      BITOPRO_API_SECRET: ${{ secrets.BITOPRO_API_SECRET }}
+      MAX_API_KEY: ${{ secrets.MAX_API_KEY }}
+      MAX_API_SECRET: ${{ secrets.MAX_API_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test purchase safeguards
+        run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Update daily records
+        if: github.event_name != 'push'
+        shell: bash
+        run: |
+          if [[ "$LIVE_TRADING" == "true" ]] && { [[ "${{ github.event_name }}" == "schedule" ]] || [[ "${{ inputs.live }}" == "true" ]]; }; then
+            python -m bot.runner --live
+          else
+            python -m bot.runner --dry-run
+          fi
+
+      - name: Save sanitized dashboard data
+        if: github.event_name != 'push'
+        shell: bash
+        run: |
+          if git diff --quiet -- public/data/dashboard.json data/state.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/data/dashboard.json data/state.json
+          git commit -m "chore: update daily purchase dashboard"
+          git push
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/configure-pages@v5
+        id: pages
+
+      - name: Build dashboard
+        env:
+          VITE_SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

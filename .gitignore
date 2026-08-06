@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.vite/
+.vinext/
+.dev.log
+.dev.err.log
+.wrangler/
+*.tmp
+.env
+.env.local
+__pycache__/
+*.py[cod]
+.DS_Store
