@@ -293,5 +293,5 @@ class BitoProAdapter(ExchangeAdapter):
             "target_eligible": eligible,
             "invoice_rule": self.invoice_rule,
             "today_status": today_status,
-            "note": "唯一可用 1 USDT 限價單執行的交易所；手續費仍可能不足一元。",
+            "note": "官方 API 可用限價單執行 USDT/TWD；是否達發票門檻依當日成交手續費估算。",
         }

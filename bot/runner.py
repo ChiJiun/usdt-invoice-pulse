@@ -114,7 +114,17 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
         if event.get("exchange") in supported_exchange_ids
     ]
     old_keys = {event["id"] for event in new_events}
-    events = new_events + [event for event in old_events if event.get("id") not in old_keys]
+    new_scopes = {
+        (event.get("date"), event.get("exchange"), event.get("mode"))
+        for event in new_events
+    }
+    events = new_events + [
+        event
+        for event in old_events
+        if event.get("id") not in old_keys
+        and (event.get("date"), event.get("exchange"), event.get("mode"))
+        not in new_scopes
+    ]
     events = events[:MAX_EVENTS]
 
     today_status = {result.exchange: result.status for result in results}

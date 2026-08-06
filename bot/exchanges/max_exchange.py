@@ -174,5 +174,9 @@ class MaxAdapter(ExchangeAdapter):
             "target_eligible": eligible,
             "invoice_rule": self.invoice_rule,
             "today_status": today_status,
-            "note": "官方 API 可自動交易，但 USDT/TWD 單筆至少 8 USDT／新台幣 250 元。",
+            "note": (
+                "官方 API 可自動交易；目前最低 "
+                f"{self.minimum_usdt.normalize():f} USDT／"
+                f"新台幣 {self.minimum_twd.normalize():f} 元。"
+            ),
         }

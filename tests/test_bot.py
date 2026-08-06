@@ -137,6 +137,11 @@ class DashboardPolicyTests(unittest.TestCase):
         self.assertTrue(
             all(event["exchange"] in supported for event in dashboard["events"])
         )
+        event_scopes = [
+            (event.get("date"), event.get("exchange"), event.get("mode"))
+            for event in dashboard["events"]
+        ]
+        self.assertEqual(len(event_scopes), len(set(event_scopes)))
 
 
 if __name__ == "__main__":

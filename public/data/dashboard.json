@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06T18:39:20+08:00",
+  "generated_at": "2026-08-06T18:54:05+08:00",
   "local_date": "2026-08-06",
   "timezone": "Asia/Taipei",
   "mode": "dry_run",
@@ -8,11 +8,11 @@
     "exchanges_total": 2,
     "target_eligible": 1,
     "filled_runs": 0,
-    "skipped_runs": 2,
+    "skipped_runs": 1,
     "confirmed_invoices": 0,
     "eligible_invoice_estimates": 0,
-    "total_filled_usdt": "2",
-    "total_spend_twd": "64.53"
+    "total_filled_usdt": "1",
+    "total_spend_twd": "32.259"
   },
   "exchanges": [
     {
@@ -25,7 +25,7 @@
       "target_eligible": true,
       "invoice_rule": "依每日成交手續費彙總；未滿一元可能為零元發票",
       "today_status": "simulated",
-      "note": "唯一可用 1 USDT 限價單執行的交易所；手續費仍可能不足一元。"
+      "note": "官方 API 可用限價單執行 USDT/TWD；是否達發票門檻依當日成交手續費估算。"
     },
     {
       "id": "max",
@@ -37,7 +37,7 @@
       "target_eligible": false,
       "invoice_rule": "依每日實收交易手續費彙總，四捨五入滿一元才開立",
       "today_status": "skipped",
-      "note": "官方 API 可自動交易，但 USDT/TWD 單筆至少 8 USDT／新台幣 250 元。"
+      "note": "官方 API 可自動交易；目前最低 8 USDT／新台幣 250 元。"
     }
   ],
   "events": [
@@ -47,13 +47,13 @@
       "status": "simulated",
       "requested_usdt": "1",
       "filled_usdt": "1",
-      "avg_price_twd": "32.264",
-      "fee_twd": "0.064528",
+      "avg_price_twd": "32.259",
+      "fee_twd": "0.064518",
       "invoice_status": "estimated_zero",
       "message": "符合最低門檻；模擬限價吃單，未送出真實訂單",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T18:39:21+08:00",
-      "id": "9ef6f8b5da0c12d2",
+      "occurred_at": "2026-08-06T18:54:05+08:00",
+      "id": "1da8a722b414e87c",
       "date": "2026-08-06"
     },
     {
@@ -62,43 +62,13 @@
       "status": "skipped",
       "requested_usdt": "1",
       "filled_usdt": "0",
-      "avg_price_twd": "32.266",
+      "avg_price_twd": "32.254",
       "fee_twd": null,
       "invoice_status": "not_applicable",
       "message": "官方最低為 8.0 USDT 且須達 NT$ 250.0",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T18:39:22+08:00",
-      "id": "b42f7c827ed6ac94",
-      "date": "2026-08-06"
-    },
-    {
-      "exchange": "bitopro",
-      "exchange_name": "BitoPro",
-      "status": "simulated",
-      "requested_usdt": "1",
-      "filled_usdt": "1",
-      "avg_price_twd": "32.266",
-      "fee_twd": "0.064532",
-      "invoice_status": "estimated_zero",
-      "message": "符合最低門檻；模擬限價吃單，未送出真實訂單",
-      "mode": "dry_run",
-      "occurred_at": "2026-08-06T17:43:39+08:00",
-      "id": "e8e842a607c16434",
-      "date": "2026-08-06"
-    },
-    {
-      "exchange": "max",
-      "exchange_name": "MAX Exchange",
-      "status": "skipped",
-      "requested_usdt": "1",
-      "filled_usdt": "0",
-      "avg_price_twd": "32.263",
-      "fee_twd": null,
-      "invoice_status": "not_applicable",
-      "message": "官方最低為 8.0 USDT 且須達 NT$ 250.0",
-      "mode": "dry_run",
-      "occurred_at": "2026-08-06T17:43:39+08:00",
-      "id": "7e0574c7d002904c",
+      "occurred_at": "2026-08-06T18:54:06+08:00",
+      "id": "9c848f01637fff14",
       "date": "2026-08-06"
     }
   ],
