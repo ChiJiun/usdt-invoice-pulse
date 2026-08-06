@@ -13,7 +13,8 @@
     "test:unit": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test": "npm run test:unit && npm run build",
     "bot:dry": "python -m bot.runner --dry-run",
-    "bot:verify": "python -m bot.verify"
+    "bot:verify": "python -m bot.verify",
+    "invoice:sync": "python -m bot.gmail_invoices"
   },
   "dependencies": {
     "react": "19.2.6",

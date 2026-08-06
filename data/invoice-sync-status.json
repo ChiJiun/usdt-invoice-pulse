@@ -1,0 +1,9 @@
+{
+  "source": "gmail",
+  "status": "disabled",
+  "checked_at": null,
+  "messages_scanned": 0,
+  "records_updated": 0,
+  "unmatched_records": 0,
+  "note": "尚未啟用 Gmail 唯讀發票核對"
+}

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T00:00:23+08:00",
+  "generated_at": "2026-08-07T00:23:04+08:00",
   "local_date": "2026-08-07",
   "timezone": "Asia/Taipei",
   "mode": "dry_run",
@@ -128,5 +128,14 @@
       }
     ]
   },
-  "invoice_records": []
+  "invoice_records": [],
+  "invoice_sync": {
+    "source": "gmail",
+    "status": "disabled",
+    "checked_at": null,
+    "messages_scanned": 0,
+    "records_updated": 0,
+    "unmatched_records": 0,
+    "note": "尚未啟用 Gmail 唯讀發票核對"
+  }
 }

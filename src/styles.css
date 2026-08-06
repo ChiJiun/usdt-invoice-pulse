@@ -244,6 +244,14 @@ td { padding: 18px; border-top: 1px solid var(--line); vertical-align: middle; f
 .empty-state { padding: 50px; text-align: center; color: var(--muted); }
 
 .invoice-record-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.invoice-sync { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 22px; margin-bottom: 18px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.48); }
+.invoice-sync > div { display: grid; gap: 5px; }
+.invoice-sync span, .invoice-sync small { color: var(--muted); font: 500 10px/1.4 "DM Mono", monospace; }
+.invoice-sync strong { font-size: 14px; }
+.invoice-sync p { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.55; }
+.invoice-sync--success { border-color: rgba(92,140,35,.35); background: rgba(223,242,189,.34); }
+.invoice-sync--partial { border-color: rgba(174,128,0,.28); background: rgba(255,240,189,.34); }
+.invoice-sync--failed { border-color: rgba(181,63,32,.26); background: rgba(255,224,215,.38); }
 .invoice-record-card { display: grid; gap: 14px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.48); }
 .invoice-record-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .invoice-record-card__top div { display: grid; gap: 4px; }
@@ -286,6 +294,7 @@ footer .brand-mark { width: 30px; height: 30px; font-size: 10px; }
   .section-heading { align-items: flex-start; flex-direction: column; gap: 16px; }
   .section-heading h2 { font-size: 28px; }
   .daily-row { grid-template-columns: 1fr; }
+  .invoice-sync { grid-template-columns: 1fr; gap: 10px; }
   .daily-row__exchange { align-items: center; padding: 20px; }
   .daily-cell { border-left: 0; border-top: 1px solid var(--line); padding: 22px 20px; }
   .invoice-panel, .status-panel { padding: 23px; }

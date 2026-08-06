@@ -37,6 +37,15 @@ const fallbackData: DashboardData = {
     exchanges: [],
   },
   invoice_records: [],
+  invoice_sync: {
+    source: "gmail",
+    status: "disabled",
+    checked_at: null,
+    messages_scanned: 0,
+    records_updated: 0,
+    unmatched_records: 0,
+    note: "尚未啟用 Gmail 唯讀發票核對",
+  },
 };
 
 const statusLabels: Record<RunStatus | "waiting", string> = {
@@ -71,6 +80,13 @@ const sideLabels: Record<TradeSide, string> = {
   buy: "買入",
   sell: "賣出",
   none: "未下單",
+};
+
+const invoiceSyncLabels = {
+  disabled: "尚未啟用",
+  success: "核對完成",
+  partial: "需要部分人工核對",
+  failed: "核對失敗",
 };
 
 function formatNumber(value: string | number, digits = 2) {
@@ -139,6 +155,7 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
     events,
     daily_status: { ...dailyStatus, exchanges: dailyExchanges },
     invoice_records: invoiceRecords,
+    invoice_sync: payload.invoice_sync ?? fallbackData.invoice_sync,
     summary: {
       ...payload.summary,
       exchanges_total: exchanges.length,
@@ -417,7 +434,7 @@ function App() {
           <article className="metric-card">
             <p>昨日發票已開立</p>
             <strong>{data.summary.yesterday_invoices_issued}<span> / {data.summary.exchanges_total} 家</span></strong>
-            <small>依 invoice-records.json 的確認紀錄</small>
+            <small>依 Gmail 或安全紀錄檔的確認結果</small>
           </article>
           <article className="metric-card">
             <p>紀錄成交量</p>
@@ -483,7 +500,7 @@ function App() {
               <span className="big-zero">{data.summary.pending_invoice_checks}<span> 筆待確認</span></span>
             </div>
             <p className="panel-copy">
-              現貨或閃兌只要回報成交，就先列為「成交待確認」。隔日可在 invoice-records.json 補上已開立、尚未查到或待人工確認；真正結果仍以交易所通知、Email 或手機載具為準。
+              現貨或閃兌只要回報成交，就先列為「成交待確認」。啟用 Gmail 唯讀 OAuth 後，排程會自動擷取兩家發票通知並更新遮罩紀錄；無法唯一配對時才保留人工確認。
             </p>
             <div className="invoice-flow" aria-label="發票狀態流程">
               <div className="flow-step flow-step--active"><span>01</span><strong>成交</strong><small>API 回報</small></div>
@@ -558,7 +575,18 @@ function App() {
               <p className="eyebrow">INVOICE LEDGER</p>
               <h2>發票確認紀錄</h2>
             </div>
-            <p>目前由安全紀錄檔確認；尚未連接信箱。Pages 只顯示遮罩號碼、HTTPS 連結與備註。</p>
+            <p>Gmail 僅使用唯讀 OAuth；Pages 不會收到信件內文、完整發票號碼、隨機碼或 token。</p>
+          </div>
+          <div className={`invoice-sync invoice-sync--${data.invoice_sync.status}`}>
+            <div>
+              <span>GMAIL READ-ONLY</span>
+              <strong>{invoiceSyncLabels[data.invoice_sync.status]}</strong>
+            </div>
+            <p>{data.invoice_sync.note}</p>
+            <small>
+              {data.invoice_sync.checked_at ? `上次核對 ${formatTime(data.invoice_sync.checked_at)}` : "尚無核對時間"}
+              {` · 掃描 ${data.invoice_sync.messages_scanned} 封 · 更新 ${data.invoice_sync.records_updated} 筆`}
+            </small>
           </div>
           {data.invoice_records.length ? (
             <div className="invoice-record-grid">
@@ -569,7 +597,7 @@ function App() {
             </div>
           ) : (
             <div className="empty-state invoice-empty">
-              尚未加入發票確認紀錄；成交後可更新 data/invoice-records.json，或依信箱服務加入唯讀 OAuth 核對。
+              尚未找到發票確認紀錄；啟用 Gmail 後會每日自動回查最近 14 天通知。
             </div>
           )}
         </section>
