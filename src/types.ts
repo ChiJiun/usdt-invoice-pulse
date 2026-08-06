@@ -17,7 +17,7 @@ export interface ExchangeStatus {
   name: string;
   short_name: string;
   accent: string;
-  api_status: "available" | "unavailable";
+  api_status: "available";
   minimum_usdt: string;
   target_eligible: boolean;
   invoice_rule: string;

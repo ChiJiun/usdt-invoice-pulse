@@ -7,6 +7,11 @@ import type {
   RunStatus,
 } from "./types";
 
+const SUPPORTED_EXCHANGE_IDS = new Set(["bitopro", "max"]);
+const SUPPORTED_INVOICE_NAMES = new Set(["bitopro", "max", "max exchange"]);
+const DEPLOYMENT_GUIDE_URL =
+  "https://github.com/ChiJiun/usdt-invoice-pulse#github-%E5%85%8D%E8%B2%BB%E9%83%A8%E7%BD%B2";
+
 const fallbackData: DashboardData = {
   generated_at: "",
   local_date: "—",
@@ -14,7 +19,7 @@ const fallbackData: DashboardData = {
   mode: "dry_run",
   target_usdt: "1",
   summary: {
-    exchanges_total: 3,
+    exchanges_total: 2,
     target_eligible: 1,
     filled_runs: 0,
     skipped_runs: 0,
@@ -65,7 +70,58 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
-function ExchangeCard({ exchange }: { exchange: ExchangeStatus }) {
+function sanitizeDashboard(payload: DashboardData): DashboardData {
+  const exchanges = payload.exchanges.filter((exchange) =>
+    SUPPORTED_EXCHANGE_IDS.has(exchange.id),
+  );
+  const events = payload.events.filter((event) =>
+    SUPPORTED_EXCHANGE_IDS.has(event.exchange),
+  );
+  const confirmedInvoices = payload.confirmed_invoices.filter((invoice) =>
+    SUPPORTED_INVOICE_NAMES.has(invoice.exchange.toLowerCase()),
+  );
+  const countedEvents = events.filter((event) =>
+    ["filled", "partial", "simulated"].includes(event.status),
+  );
+  const totalFilled = countedEvents.reduce(
+    (sum, event) => sum + Number(event.filled_usdt || 0),
+    0,
+  );
+  const totalSpend = countedEvents.reduce(
+    (sum, event) =>
+      sum + Number(event.filled_usdt || 0) * Number(event.avg_price_twd || 0),
+    0,
+  );
+
+  return {
+    ...payload,
+    exchanges,
+    events,
+    confirmed_invoices: confirmedInvoices,
+    summary: {
+      ...payload.summary,
+      exchanges_total: exchanges.length,
+      target_eligible: exchanges.filter((exchange) => exchange.target_eligible).length,
+      filled_runs: events.filter((event) => ["filled", "partial"].includes(event.status))
+        .length,
+      skipped_runs: events.filter((event) => event.status === "skipped").length,
+      confirmed_invoices: confirmedInvoices.length,
+      eligible_invoice_estimates: events.filter(
+        (event) => event.invoice_status === "estimated_eligible",
+      ).length,
+      total_filled_usdt: String(totalFilled),
+      total_spend_twd: String(totalSpend),
+    },
+  };
+}
+
+function ExchangeCard({
+  exchange,
+  targetUsdt,
+}: {
+  exchange: ExchangeStatus;
+  targetUsdt: string;
+}) {
   return (
     <article className="exchange-card" style={{ "--accent": exchange.accent } as React.CSSProperties}>
       <div className="exchange-card__top">
@@ -75,7 +131,7 @@ function ExchangeCard({ exchange }: { exchange: ExchangeStatus }) {
         </span>
       </div>
       <div>
-        <p className="eyebrow">{exchange.api_status === "available" ? "官方 API" : "無公開 API"}</p>
+        <p className="eyebrow">官方私人交易 API</p>
         <h3>{exchange.name}</h3>
       </div>
       <div className="limit-row">
@@ -85,7 +141,8 @@ function ExchangeCard({ exchange }: { exchange: ExchangeStatus }) {
       <p className="exchange-note">{exchange.note}</p>
       <div className="eligibility-line">
         <span className={exchange.target_eligible ? "tick tick--yes" : "tick"} aria-hidden="true" />
-        {exchange.target_eligible ? "1 USDT 符合門檻" : "1 USDT 不符合門檻"}
+        {formatNumber(targetUsdt, 4)} USDT
+        {exchange.target_eligible ? " 符合門檻" : " 不符合門檻"}
       </div>
     </article>
   );
@@ -131,7 +188,7 @@ function App() {
         if (!response.ok) throw new Error("dashboard data unavailable");
         return response.json();
       })
-      .then((payload: DashboardData) => setData(payload))
+      .then((payload: DashboardData) => setData(sanitizeDashboard(payload)))
       .catch(() => setLoadError(true));
   }, []);
 
@@ -150,16 +207,30 @@ function App() {
   const successRate = data.summary.exchanges_total
     ? Math.round((data.summary.target_eligible / data.summary.exchanges_total) * 100)
     : 0;
+  const eligibleNames = data.exchanges
+    .filter((exchange) => exchange.target_eligible)
+    .map((exchange) => exchange.name);
+  const readinessTitle = eligibleNames.length
+    ? `${eligibleNames.join("、")} 符合目前目標`
+    : "目前沒有平台符合下單門檻";
 
   return (
     <main>
       <section className="hero-shell">
         <nav className="topbar" aria-label="主要導覽">
           <a className="brand" href="#top" aria-label="一塊日常首頁">
-            <span className="brand-mark">1U</span>
+            <span className="brand-mark">API</span>
             <span>一塊日常</span>
           </a>
           <div className="topbar-meta">
+            <a
+              className="docs-link"
+              href={DEPLOYMENT_GUIDE_URL}
+              target="_blank"
+              rel="noreferrer"
+            >
+              部署說明 ↗
+            </a>
             <span className={`mode-badge mode-badge--${data.mode}`}>
               <span className="mode-badge__light" />
               {data.mode === "live" ? "正式執行" : "安全模擬"}
@@ -171,7 +242,7 @@ function App() {
         <div className="hero" id="top">
           <div className="hero-copy">
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
-            <h1>每天一顆 USDT，<br /><em>結果要算清楚。</em></h1>
+            <h1>每日 USDT 自動化，<br /><em>結果要算清楚。</em></h1>
             <p className="hero-lead">
               成交不等於有效發票。這裡把下單門檻、交易結果與發票資格放在同一張日報裡。
             </p>
@@ -186,8 +257,8 @@ function App() {
             </div>
             <div>
               <p className="eyebrow">TODAY'S READINESS</p>
-              <h2>只有 BitoPro 可用 1 USDT 下單</h2>
-              <p>MAX 至少 8 U；HOYA BIT 至少 10 U，且未提供公開交易 API。</p>
+              <h2>{readinessTitle}</h2>
+              <p>目前目標為 {formatNumber(data.target_usdt, 4)} USDT；只計入具有官方私人下單 API 的平台。</p>
             </div>
           </aside>
         </div>
@@ -227,13 +298,17 @@ function App() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">EXCHANGE CHECK</p>
-              <h2>三家交易所，逐一過門檻</h2>
+              <h2>兩家可程式交易所，逐一過門檻</h2>
             </div>
-            <p>機器只會執行符合官方規則的訂單，不自動放大購買金額。</p>
+            <p>Dashboard 只顯示具備官方私人下單 API 的平台。</p>
           </div>
           <div className="exchange-grid">
             {data.exchanges.map((exchange) => (
-              <ExchangeCard key={exchange.id} exchange={exchange} />
+              <ExchangeCard
+                key={exchange.id}
+                exchange={exchange}
+                targetUsdt={data.target_usdt}
+              />
             ))}
           </div>
         </section>
@@ -245,10 +320,10 @@ function App() {
                 <p className="eyebrow">INVOICE REALITY</p>
                 <h2>成交 ≠ 有效發票</h2>
               </div>
-              <span className="big-zero">0<span> 元</span></span>
+              <span className="big-zero">{data.summary.eligible_invoice_estimates}<span> 筆預估</span></span>
             </div>
             <p className="panel-copy">
-              以 1 USDT 與目前 VIP 0 吃單費率估算，BitoPro 手續費約低於一元，電子發票可能顯示為零元且不具兌獎資格。
+              系統依目前目標、成交價與設定費率估算發票資格。真正開立結果仍須以交易所通知、Email 或手機載具為準。
             </p>
             <div className="invoice-flow" aria-label="發票狀態流程">
               <div className="flow-step flow-step--active"><span>01</span><strong>成交</strong><small>API 回報</small></div>
@@ -276,6 +351,7 @@ function App() {
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>重複防護</strong><small>同交易所每日最多一次</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>公開資料最小化</strong><small>不含憑證與訂單編號</small></p></div>
               <div><span className="health-icon">i</span><p><strong>排程時間</strong><small>每日 09:17（台北時間）</small></p></div>
+              <div><span className="health-icon">↗</span><p><strong><a href={DEPLOYMENT_GUIDE_URL} target="_blank" rel="noreferrer">完整部署手冊</a></strong><small>Pages、Secrets、驗證與首單</small></p></div>
             </div>
           </article>
         </section>
@@ -317,7 +393,7 @@ function App() {
       </section>
 
       <footer>
-        <div className="brand"><span className="brand-mark">1U</span><span>一塊日常</span></div>
+        <div className="brand"><span className="brand-mark">API</span><span>一塊日常</span></div>
         <p>只呈現紀錄，不構成投資、稅務或中獎保證。</p>
         <p>Asia/Taipei · {data.mode === "live" ? "LIVE" : "DRY RUN"}</p>
       </footer>

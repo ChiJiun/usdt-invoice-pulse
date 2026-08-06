@@ -12,7 +12,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from bot.config import Settings
-from bot.exchanges import BitoProAdapter, HoyaBitAdapter, MaxAdapter
+from bot.exchanges import BitoProAdapter, MaxAdapter
 from bot.models import RunResult, decimal_text
 
 
@@ -77,8 +77,17 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
         adapters.append(BitoProAdapter(settings))
     if settings.max_enabled:
         adapters.append(MaxAdapter(settings))
-    if settings.hoyabit_enabled:
-        adapters.append(HoyaBitAdapter(settings))
+    supported_exchange_ids = {adapter.id for adapter in adapters}
+    supported_invoice_names = {
+        value.lower()
+        for adapter in adapters
+        for value in (adapter.id, adapter.name, adapter.short_name)
+    }
+    confirmed = [
+        invoice
+        for invoice in confirmed
+        if str(invoice.get("exchange", "")).lower() in supported_invoice_names
+    ]
 
     results: list[RunResult] = []
     for adapter in adapters:
@@ -99,9 +108,23 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
             }
 
     new_events = [result.to_public_dict(event_id(result)) for result in results]
-    old_events = existing_dashboard.get("events", [])
+    old_events = [
+        event
+        for event in existing_dashboard.get("events", [])
+        if event.get("exchange") in supported_exchange_ids
+    ]
     old_keys = {event["id"] for event in new_events}
-    events = new_events + [event for event in old_events if event.get("id") not in old_keys]
+    new_scopes = {
+        (event.get("date"), event.get("exchange"), event.get("mode"))
+        for event in new_events
+    }
+    events = new_events + [
+        event
+        for event in old_events
+        if event.get("id") not in old_keys
+        and (event.get("date"), event.get("exchange"), event.get("mode"))
+        not in new_scopes
+    ]
     events = events[:MAX_EVENTS]
 
     today_status = {result.exchange: result.status for result in results}
@@ -192,4 +215,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

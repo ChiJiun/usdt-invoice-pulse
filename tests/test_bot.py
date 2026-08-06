@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -9,7 +10,6 @@ from pathlib import Path
 
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
-from bot.exchanges.hoyabit import HoyaBitAdapter
 from bot.exchanges.max_exchange import MaxAdapter
 from bot.models import estimated_invoice_status
 
@@ -22,7 +22,6 @@ def settings(target: str = "1") -> Settings:
         live_confirmation="",
         bitopro_enabled=True,
         max_enabled=True,
-        hoyabit_enabled=True,
         bitopro_email="",
         bitopro_api_key="",
         bitopro_api_secret="",
@@ -106,11 +105,6 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(result.status, "skipped")
         self.assertIn("8 USDT", result.message)
 
-    def test_hoyabit_is_skipped(self):
-        result = HoyaBitAdapter(settings()).run(live=False)
-        self.assertEqual(result.status, "skipped")
-        self.assertIn("10 USDT", result.message)
-
     def test_bitopro_credential_check_is_read_only(self):
         configured = replace(
             settings(),
@@ -129,6 +123,25 @@ class RuleTests(unittest.TestCase):
         http = FakeHttp()
         MaxAdapter(configured, http).verify_credentials()
         self.assertEqual(http.calls, [("GET", "https://max-api.maicoin.com/api/v3/info")])
+
+
+class DashboardPolicyTests(unittest.TestCase):
+    def test_public_dashboard_only_contains_programmatic_exchanges(self):
+        dashboard = json.loads(
+            Path("public/data/dashboard.json").read_text(encoding="utf-8")
+        )
+        supported = {"bitopro", "max"}
+        self.assertEqual(
+            {exchange["id"] for exchange in dashboard["exchanges"]}, supported
+        )
+        self.assertTrue(
+            all(event["exchange"] in supported for event in dashboard["events"])
+        )
+        event_scopes = [
+            (event.get("date"), event.get("exchange"), event.get("mode"))
+            for event in dashboard["events"]
+        ]
+        self.assertEqual(len(event_scopes), len(set(event_scopes)))
 
 
 if __name__ == "__main__":
