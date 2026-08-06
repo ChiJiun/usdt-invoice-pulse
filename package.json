@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "test:unit": "python -m unittest discover -s tests -p \"test_*.py\"",
     "test": "npm run test:unit && npm run build",
-    "bot:dry": "python -m bot.runner --dry-run"
+    "bot:dry": "python -m bot.runner --dry-run",
+    "bot:verify": "python -m bot.verify"
   },
   "dependencies": {
     "react": "19.2.6",

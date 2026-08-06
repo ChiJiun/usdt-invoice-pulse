@@ -90,6 +90,21 @@ class BitoProAdapter(ExchangeAdapter):
         if missing:
             raise ValueError(f"BitoPro 缺少 GitHub Secrets：{', '.join(missing)}")
 
+    def _account_balances(self) -> list[dict[str, Any]]:
+        response = self.http.request_json(
+            "GET",
+            f"{self.base_url}/accounts/balance",
+            headers=self._read_headers(),
+        )
+        if not isinstance(response, dict) or not isinstance(response.get("data"), list):
+            raise RuntimeError("BitoPro 帳戶驗證回應格式不符預期")
+        return response["data"]
+
+    def verify_credentials(self) -> None:
+        """只驗證簽章與帳戶讀取權限，不送出訂單。"""
+        self._validate_credentials()
+        self._account_balances()
+
     def run(self, *, live: bool):
         ask, minimum = self._market_snapshot()
         self.minimum_usdt = minimum
@@ -175,6 +190,23 @@ class BitoProAdapter(ExchangeAdapter):
         price = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
             Decimal("0.001"), rounding=ROUND_UP
         )
+        balances = self._account_balances()
+        available_twd = next(
+            (
+                Decimal(str(balance.get("available", "0")))
+                for balance in balances
+                if str(balance.get("currency", "")).lower() == "twd"
+            ),
+            Decimal("0"),
+        )
+        required_twd = price * target
+        if available_twd < required_twd:
+            return self.base_result(
+                status="failed",
+                message="TWD 可用餘額不足，未送出訂單",
+                live=True,
+            )
+
         timestamp = int(time.time() * 1000)
         body = {
             "action": "BUY",

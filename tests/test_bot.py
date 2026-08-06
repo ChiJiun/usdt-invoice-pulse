@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import tempfile
 import unittest
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -37,7 +38,11 @@ def settings(target: str = "1") -> Settings:
 
 
 class FakeHttp:
+    def __init__(self):
+        self.calls = []
+
     def request_json(self, method, url, **kwargs):
+        self.calls.append((method, url))
         if "order-book" in url:
             return {"asks": [{"price": "32.265", "amount": "100"}], "bids": []}
         if "limitations-and-fees" in url:
@@ -56,6 +61,10 @@ class FakeHttp:
             ]
         if "/api/v3/ticker" in url:
             return {"sell": "32.263"}
+        if url.endswith("/accounts/balance"):
+            return {"data": [{"currency": "twd", "available": "100"}]}
+        if url.endswith("/api/v3/info"):
+            return {"email": "masked@example.invalid"}
         raise AssertionError(f"Unexpected request: {method} {url}")
 
 
@@ -101,6 +110,25 @@ class RuleTests(unittest.TestCase):
         result = HoyaBitAdapter(settings()).run(live=False)
         self.assertEqual(result.status, "skipped")
         self.assertIn("10 USDT", result.message)
+
+    def test_bitopro_credential_check_is_read_only(self):
+        configured = replace(
+            settings(),
+            bitopro_email="member@example.invalid",
+            bitopro_api_key="key",
+            bitopro_api_secret="secret",
+        )
+        http = FakeHttp()
+        BitoProAdapter(configured, http).verify_credentials()
+        self.assertEqual(http.calls, [("GET", "https://api.bitopro.com/v3/accounts/balance")])
+
+    def test_max_credential_check_is_read_only(self):
+        configured = replace(
+            settings(), max_api_key="key", max_api_secret="secret"
+        )
+        http = FakeHttp()
+        MaxAdapter(configured, http).verify_credentials()
+        self.assertEqual(http.calls, [("GET", "https://max-api.maicoin.com/api/v3/info")])
 
 
 if __name__ == "__main__":
