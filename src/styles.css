@@ -135,6 +135,37 @@ a { color: inherit; text-decoration: none; }
 .metric-card small { color: var(--muted); }
 .metric-card--primary p, .metric-card--primary small, .metric-card--warning p, .metric-card--warning small { color: rgba(23,35,31,.66); }
 
+.daily-pulse { margin-top: 58px; }
+.daily-list { display: grid; gap: 12px; }
+.daily-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 1fr;
+  min-height: 210px;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--accent);
+  border-radius: 22px;
+  background: rgba(255,255,255,.54);
+  overflow: hidden;
+}
+.daily-row__exchange { display: flex; align-items: flex-start; gap: 14px; padding: 26px 22px; }
+.daily-row__exchange div { display: grid; gap: 5px; }
+.daily-row__exchange strong { font-size: 15px; }
+.daily-row__exchange small { color: var(--muted); font: 400 10px/1 "DM Mono", monospace; }
+.daily-cell { display: flex; flex-direction: column; gap: 10px; padding: 26px; border-left: 1px solid var(--line); }
+.daily-cell--invoice { background: rgba(23,35,31,.025); }
+.daily-cell__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 12px; }
+.daily-value { min-height: 30px; font: 500 21px/1.35 "DM Mono", monospace; letter-spacing: -.025em; }
+.daily-cell p { margin: 0; color: var(--ink); font-size: 12px; line-height: 1.55; }
+.daily-cell > small { color: var(--muted); font-size: 11px; line-height: 1.6; }
+.daily-links { display: flex; flex-wrap: wrap; gap: 16px; margin-top: auto; }
+.daily-links a { color: #31594a; font-size: 11px; font-weight: 700; text-decoration: underline; text-decoration-color: rgba(49,89,74,.35); text-underline-offset: 3px; }
+.daily-links a:hover { color: #0c7a55; }
+.daily-disclaimer { margin: 14px 4px 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.invoice-badge { display: inline-block; padding: 6px 9px; border-radius: 8px; background: #ebe8df; color: #686c66; font-size: 11px; }
+.invoice-badge--confirmed { background: #dff2bd; color: #3d6518; }
+.invoice-badge--pending_confirmation, .invoice-badge--manual_check { background: #fff0bd; color: #775b05; }
+.invoice-badge--not_found { background: #ffe0d7; color: #9a3518; }
+
 .section-block { margin-top: 76px; }
 .section-heading { display: flex; justify-content: space-between; gap: 40px; align-items: flex-end; margin-bottom: 28px; }
 .section-heading h2 { margin: 8px 0 0; font-size: clamp(26px, 3vw, 38px); letter-spacing: -.04em; }
@@ -205,11 +236,21 @@ td { padding: 18px; border-top: 1px solid var(--line); vertical-align: middle; f
 .status-pill--filled, .status-pill--simulated { background: #e2f4c2; color: #41671e; }
 .status-pill--partial { background: #fff0bd; color: #775b05; }
 .status-pill--failed { background: #ffe0d7; color: #9a3518; }
+.status-pill--no_record { background: #ebe8df; color: #686c66; }
 .side-pill { display: inline-block; min-width: 48px; padding: 6px 9px; border-radius: 999px; text-align: center; font-size: 11px; font-weight: 700; }
 .side-pill--buy { background: #dce7ff; color: #2855b4; }
 .side-pill--sell { background: #ffe2d6; color: #a7421d; }
 .side-pill--none { background: #e9e6de; color: #6c706a; }
 .empty-state { padding: 50px; text-align: center; color: var(--muted); }
+
+.invoice-record-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.invoice-record-card { display: grid; gap: 14px; padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.48); }
+.invoice-record-card__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+.invoice-record-card__top div { display: grid; gap: 4px; }
+.invoice-record-card__top small, .invoice-record-card > small { color: var(--muted); font-size: 11px; line-height: 1.55; }
+.invoice-record-card p { margin: 0; font: 500 15px/1.5 "DM Mono", monospace; }
+.invoice-record-card a { color: #31594a; font-size: 11px; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
+.invoice-empty { border: 1px dashed var(--line); border-radius: 18px; }
 
 footer { max-width: 1192px; margin: 0 auto; padding: 30px 0 44px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 footer .brand { color: var(--ink); font-size: 13px; }
@@ -223,6 +264,8 @@ footer .brand-mark { width: 30px; height: 30px; font-size: 10px; }
   .exchange-grid { grid-template-columns: 1fr; }
   .exchange-card { min-height: 280px; }
   .split-grid { grid-template-columns: 1fr; }
+  .daily-row { grid-template-columns: 150px 1fr 1fr; }
+  .invoice-record-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -242,6 +285,9 @@ footer .brand-mark { width: 30px; height: 30px; font-size: 10px; }
   .section-block, .split-grid { margin-top: 54px; }
   .section-heading { align-items: flex-start; flex-direction: column; gap: 16px; }
   .section-heading h2 { font-size: 28px; }
+  .daily-row { grid-template-columns: 1fr; }
+  .daily-row__exchange { align-items: center; padding: 20px; }
+  .daily-cell { border-left: 0; border-top: 1px solid var(--line); padding: 22px 20px; }
   .invoice-panel, .status-panel { padding: 23px; }
   .invoice-flow { grid-template-columns: 1fr; gap: 16px; }
   .flow-line { width: 1px; height: 14px; margin: 0 0 0 10px; }

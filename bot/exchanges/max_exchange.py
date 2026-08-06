@@ -133,6 +133,60 @@ class MaxAdapter(ExchangeAdapter):
                 return order
         return None
 
+    def _find_today_spot_trade(self) -> dict[str, Any] | None:
+        path = "/api/v3/wallet/spot/trades"
+        start_of_day = self.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        params = {
+            "nonce": int(time.time() * 1000),
+            "market": self.market,
+            "timestamp": int(start_of_day.timestamp() * 1000),
+            "order": "desc",
+            "limit": 1000,
+        }
+        history = self.http.request_json(
+            "GET",
+            f"{self.base_url}{path}",
+            params=params,
+            headers=self._auth_headers(params, path),
+        )
+        if not isinstance(history, list):
+            raise RuntimeError("MAX 現貨成交紀錄回應格式不符預期")
+        start_timestamp = int(start_of_day.timestamp() * 1000)
+        valid = [
+            trade
+            for trade in history
+            if str(trade.get("market", "")).lower() == self.market
+            and Decimal(str(trade.get("volume", "0"))) > 0
+            and int(trade.get("created_at", 0)) >= start_timestamp
+        ]
+        return max(valid, key=lambda trade: int(trade.get("created_at", 0)), default=None)
+
+    def _spot_trade_result(self, trade: dict[str, Any]):
+        raw_side = str(trade.get("side", "")).lower()
+        side = "buy" if raw_side == "bid" else "sell" if raw_side == "ask" else "none"
+        filled = Decimal(str(trade.get("volume", "0")))
+        funds = Decimal(str(trade.get("funds", "0")))
+        price = Decimal(str(trade.get("price", "0")))
+        if not price and filled > 0:
+            price = funds / filled
+        identifier = str(trade.get("id") or trade.get("order_id") or "")
+        return self.base_result(
+            status="filled",
+            side=side,
+            execution_type="spot",
+            requested_usdt=filled,
+            filled_usdt=filled,
+            avg_price_twd=price or None,
+            invoice_status="pending_confirmation",
+            message="官方 API 偵測到今日已有 USDT/TWD 現貨成交，已沿用紀錄並停止新增訂單",
+            live=True,
+            reference_hash=(
+                hashlib.sha256(identifier.encode()).hexdigest()[:10]
+                if identifier
+                else None
+            ),
+        )
+
     def _convert_result(self, order: dict[str, Any], *, message: str):
         from_currency = str(order.get("from_currency", "")).lower()
         to_currency = str(order.get("to_currency", "")).lower()
@@ -180,13 +234,6 @@ class MaxAdapter(ExchangeAdapter):
                 requested_usdt=target,
                 message="現貨資金不足，MAX 閃兌 fallback 未啟用；本日略過",
                 live=True,
-            )
-
-        existing = self._find_today_convert()
-        if existing:
-            return self._convert_result(
-                existing,
-                message="偵測到今日既有 USDT/TWD 閃兌，已沿用成交並阻止重複交易",
             )
 
         available_twd = self._available_balance(balances, "twd")
@@ -279,6 +326,16 @@ class MaxAdapter(ExchangeAdapter):
             )
 
         self._validate_credentials()
+        existing_spot = self._find_today_spot_trade()
+        if existing_spot:
+            return self._spot_trade_result(existing_spot)
+        existing_convert = self._find_today_convert()
+        if existing_convert:
+            return self._convert_result(
+                existing_convert,
+                message="官方 API 偵測到今日既有 USDT/TWD 閃兌，已沿用成交並停止新增交易",
+            )
+
         balances = self._account_balances()
         available_twd = self._available_balance(balances, "twd")
         available_usdt = self._available_balance(balances, "usdt")

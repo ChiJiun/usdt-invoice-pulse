@@ -13,6 +13,7 @@ from unittest.mock import patch
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
 from bot.exchanges.max_exchange import MaxAdapter
+from bot.runner import existing_live_record, normalize_invoice_records, safe_public_url
 from bot.trading import choose_trade_side, effective_target
 
 
@@ -38,6 +39,7 @@ def settings(target: str = "1") -> Settings:
         price_slippage=Decimal("0.005"),
         dashboard_path=root / "dashboard.json",
         state_path=root / "state.json",
+        invoice_records_path=root / "invoice-records.json",
         confirmed_invoices_path=root / "invoices.json",
     )
 
@@ -51,6 +53,8 @@ class FakeHttp:
         max_twd: str = "1000",
         max_usdt: str = "100",
         max_converts: list[dict] | None = None,
+        bitopro_trades: list[dict] | None = None,
+        max_trades: list[dict] | None = None,
     ):
         self.calls = []
         self.bitopro_twd = bitopro_twd
@@ -58,6 +62,8 @@ class FakeHttp:
         self.max_twd = max_twd
         self.max_usdt = max_usdt
         self.max_converts = max_converts or []
+        self.bitopro_trades = bitopro_trades or []
+        self.max_trades = max_trades or []
         self.last_body = None
 
     def request_json(self, method, url, **kwargs):
@@ -104,6 +110,10 @@ class FakeHttp:
             ]
         if method == "GET" and url.endswith("/api/v3/converts"):
             return self.max_converts
+        if method == "GET" and url.endswith("/api/v3/wallet/spot/trades"):
+            return self.max_trades
+        if method == "GET" and url.endswith("/orders/trades/usdt_twd"):
+            return {"data": self.bitopro_trades}
         if "/orders/all/usdt_twd" in url:
             return {"data": []}
         if method == "POST" and url.endswith("/orders/usdt_twd"):
@@ -242,6 +252,29 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(result.side, "sell")
         self.assertEqual(http.last_body["action"], "SELL")
 
+    def test_bitopro_existing_today_trade_blocks_duplicate(self):
+        configured = replace(
+            settings(),
+            bitopro_email="member@example.invalid",
+            bitopro_api_key="key",
+            bitopro_api_secret="secret",
+        )
+        existing = {
+            "tradeId": "existing-bito-trade",
+            "orderId": "existing-bito-order",
+            "price": "32.25",
+            "action": "BUY",
+            "baseAmount": "1",
+            "quoteAmount": "32.25",
+            "createdTimestamp": int(time.time() * 1000),
+        }
+        http = FakeHttp(bitopro_trades=[existing])
+        result = BitoProAdapter(configured, http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.side, "buy")
+        self.assertIn("今日已有", result.message)
+        self.assertFalse(any(method == "POST" for method, _ in http.calls))
+
     def test_max_live_prefers_buy_and_uses_eight_usdt(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
         http = FakeHttp(max_twd="1000", max_usdt="100")
@@ -250,6 +283,26 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(result.side, "buy")
         self.assertEqual(result.execution_type, "spot")
         self.assertEqual(http.last_body["volume"], "8")
+
+    def test_max_existing_today_spot_trade_blocks_duplicate(self):
+        configured = replace(settings(), max_api_key="key", max_api_secret="secret")
+        existing = {
+            "id": 991,
+            "order_id": 881,
+            "wallet_type": "spot",
+            "price": "32.25",
+            "volume": "8",
+            "funds": "258",
+            "market": "usdttwd",
+            "side": "bid",
+            "created_at": int(time.time() * 1000),
+        }
+        http = FakeHttp(max_trades=[existing])
+        result = MaxAdapter(configured, http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.side, "buy")
+        self.assertIn("今日已有", result.message)
+        self.assertFalse(any(method == "POST" for method, _ in http.calls))
 
     def test_max_live_falls_back_to_sell(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
@@ -347,6 +400,57 @@ class RuleTests(unittest.TestCase):
 
 
 class DashboardPolicyTests(unittest.TestCase):
+    def test_repository_live_record_is_used_before_a_new_order(self):
+        state = {
+            "live_runs": {
+                "2026-08-06": {
+                    "max": {
+                        "status": "filled",
+                        "side": "buy",
+                        "execution_type": "spot",
+                        "filled_usdt": "8",
+                    }
+                }
+            }
+        }
+        dashboard = {
+            "events": [
+                {
+                    "date": "2026-08-06",
+                    "exchange": "max",
+                    "mode": "live",
+                    "status": "filled",
+                    "avg_price_twd": "32.25",
+                }
+            ]
+        }
+        record = existing_live_record(state, dashboard, "2026-08-06", "max")
+        self.assertIsNotNone(record)
+        self.assertEqual(record["filled_usdt"], "8")
+        self.assertEqual(record["avg_price_twd"], "32.25")
+
+    def test_invoice_record_sanitization_masks_identifiers_and_rejects_token_urls(self):
+        records = normalize_invoice_records(
+            [
+                {
+                    "id": "sample",
+                    "exchange": "BitoPro",
+                    "trade_date": "2026-08-05",
+                    "status": "issued",
+                    "masked_number": "AB12345678",
+                    "detail_url": "https://example.com/invoice?token=secret",
+                }
+            ],
+            {"bitopro": "bitopro"},
+        )
+        self.assertEqual(records[0]["masked_number"], "AB••••••78")
+        self.assertEqual(records[0]["status"], "confirmed")
+        self.assertIsNone(records[0]["detail_url"])
+        self.assertEqual(
+            safe_public_url("https://example.com/invoice"),
+            "https://example.com/invoice",
+        )
+
     def test_public_dashboard_only_contains_programmatic_exchanges(self):
         dashboard = json.loads(
             Path("public/data/dashboard.json").read_text(encoding="utf-8")
@@ -368,6 +472,11 @@ class DashboardPolicyTests(unittest.TestCase):
         self.assertIn(max_event["side"], {"buy", "sell", "none"})
         self.assertIn(max_event["execution_type"], {"spot", "convert", "none"})
         self.assertNotIn("fee_twd", max_event)
+        self.assertEqual(
+            {row["exchange"] for row in dashboard["daily_status"]["exchanges"]},
+            supported,
+        )
+        self.assertIn("invoice_records", dashboard)
 
 
 if __name__ == "__main__":

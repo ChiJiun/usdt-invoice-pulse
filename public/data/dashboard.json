@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06T22:35:09+08:00",
+  "generated_at": "2026-08-06T23:14:22+08:00",
   "local_date": "2026-08-06",
   "timezone": "Asia/Taipei",
   "mode": "dry_run",
@@ -12,7 +12,9 @@
     "confirmed_invoices": 0,
     "pending_invoice_checks": 0,
     "total_filled_usdt": "9",
-    "total_notional_twd": "290.373"
+    "total_notional_twd": "290.37",
+    "today_trades": 0,
+    "yesterday_invoices_issued": 0
   },
   "exchanges": [
     {
@@ -55,12 +57,12 @@
       "execution_type": "spot",
       "requested_usdt": "1",
       "filled_usdt": "1",
-      "avg_price_twd": "32.261",
+      "avg_price_twd": "32.25",
       "invoice_status": "not_applicable",
       "message": "已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T22:35:09+08:00",
-      "id": "e1cda9598095674e",
+      "occurred_at": "2026-08-06T23:05:49+08:00",
+      "id": "563f58e138891bdb",
       "date": "2026-08-06"
     },
     {
@@ -71,14 +73,69 @@
       "execution_type": "spot",
       "requested_usdt": "8",
       "filled_usdt": "8",
-      "avg_price_twd": "32.264",
+      "avg_price_twd": "32.265",
       "invoice_status": "not_applicable",
       "message": "已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T22:35:10+08:00",
-      "id": "e8ca36981cf95c3a",
+      "occurred_at": "2026-08-06T23:05:50+08:00",
+      "id": "e64a071a842fb754",
       "date": "2026-08-06"
     }
   ],
+  "daily_status": {
+    "today_date": "2026-08-06",
+    "yesterday_date": "2026-08-05",
+    "exchanges": [
+      {
+        "exchange": "bitopro",
+        "exchange_name": "BitoPro",
+        "short_name": "BP",
+        "accent": "#2f6bff",
+        "today_trade": {
+          "status": "simulated",
+          "side": "buy",
+          "execution_type": "spot",
+          "filled_usdt": "1",
+          "message": "已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
+          "source": "dry_run"
+        },
+        "yesterday_invoice": {
+          "status": "not_applicable",
+          "checked_at": null,
+          "issued_date": null,
+          "amount_twd": null,
+          "masked_number": null,
+          "detail_url": null,
+          "lookup_url": "https://support.bitopro.com/hc/zh-tw/articles/360018704812",
+          "note": "昨日沒有保存到正式成交紀錄"
+        }
+      },
+      {
+        "exchange": "max",
+        "exchange_name": "MAX Exchange",
+        "short_name": "MAX",
+        "accent": "#1aa679",
+        "today_trade": {
+          "status": "simulated",
+          "side": "buy",
+          "execution_type": "spot",
+          "filled_usdt": "8",
+          "message": "已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
+          "source": "dry_run"
+        },
+        "yesterday_invoice": {
+          "status": "not_applicable",
+          "checked_at": null,
+          "issued_date": null,
+          "amount_twd": null,
+          "masked_number": null,
+          "detail_url": null,
+          "lookup_url": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
+          "note": "昨日沒有保存到正式成交紀錄"
+        }
+      }
+    ]
+  },
+  "invoice_records": [],
   "confirmed_invoices": []
 }

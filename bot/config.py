@@ -56,6 +56,7 @@ class Settings:
     price_slippage: Decimal
     dashboard_path: Path
     state_path: Path
+    invoice_records_path: Path
     confirmed_invoices_path: Path
 
     @classmethod
@@ -80,6 +81,9 @@ class Settings:
             price_slippage=env_decimal("ORDER_PRICE_SLIPPAGE", "0.005"),
             dashboard_path=Path(os.getenv("DASHBOARD_PATH", "public/data/dashboard.json")),
             state_path=Path(os.getenv("STATE_PATH", "data/state.json")),
+            invoice_records_path=Path(
+                os.getenv("INVOICE_RECORDS_PATH", "data/invoice-records.json")
+            ),
             confirmed_invoices_path=Path(
                 os.getenv("CONFIRMED_INVOICES_PATH", "data/confirmed-invoices.json")
             ),

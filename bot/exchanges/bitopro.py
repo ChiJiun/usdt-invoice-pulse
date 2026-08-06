@@ -113,6 +113,63 @@ class BitoProAdapter(ExchangeAdapter):
         self._validate_credentials()
         self._account_balances()
 
+    def _find_today_trade(self, current) -> dict[str, Any] | None:
+        """Return the latest real USDT/TWD fill for the Taipei calendar day."""
+        start_of_day = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        response = self.http.request_json(
+            "GET",
+            f"{self.base_url}/orders/trades/{self.pair}",
+            params={
+                "startTimestamp": int(start_of_day.timestamp() * 1000),
+                "endTimestamp": int(current.timestamp() * 1000),
+                "limit": 1000,
+            },
+            headers=self._read_headers(),
+        )
+        trades = response.get("data", []) if isinstance(response, dict) else []
+        if not isinstance(trades, list):
+            raise RuntimeError("BitoPro 成交紀錄回應格式不符預期")
+        valid = [
+            trade
+            for trade in trades
+            if Decimal(str(trade.get("baseAmount", "0"))) > 0
+            and int(trade.get("createdTimestamp", trade.get("timestamp", 0)))
+            >= int(start_of_day.timestamp() * 1000)
+        ]
+        return max(
+            valid,
+            key=lambda trade: int(
+                trade.get("createdTimestamp", trade.get("timestamp", 0))
+            ),
+            default=None,
+        )
+
+    def _existing_trade_result(self, trade: dict[str, Any]):
+        action = str(trade.get("action", "")).lower()
+        side = action if action in {"buy", "sell"} else "none"
+        filled = Decimal(str(trade.get("baseAmount", "0")))
+        quote = Decimal(str(trade.get("quoteAmount", "0")))
+        price = Decimal(str(trade.get("price", "0")))
+        if not price and filled > 0:
+            price = quote / filled
+        identifier = str(trade.get("tradeId") or trade.get("orderId") or "")
+        return self.base_result(
+            status="filled",
+            side=side,
+            execution_type="spot",
+            requested_usdt=filled,
+            filled_usdt=filled,
+            avg_price_twd=price or None,
+            invoice_status="pending_confirmation",
+            message="官方 API 偵測到今日已有 USDT/TWD 成交，已沿用紀錄並停止新增訂單",
+            live=True,
+            reference_hash=(
+                hashlib.sha256(identifier.encode()).hexdigest()[:10]
+                if identifier
+                else None
+            ),
+        )
+
     def run(self, *, live: bool):
         bid, ask, minimum, amount_precision, maintain = self._market_snapshot()
         self.minimum_usdt = minimum
@@ -147,6 +204,10 @@ class BitoProAdapter(ExchangeAdapter):
 
         self._validate_credentials()
         current = self.now()
+        existing_trade = self._find_today_trade(current)
+        if existing_trade:
+            return self._existing_trade_result(existing_trade)
+
         client_id = zlib.crc32(f"bitopro-{current.date()}".encode()) & 0x7FFFFFFF
         client_id = client_id or 1
 

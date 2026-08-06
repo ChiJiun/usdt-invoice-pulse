@@ -1,6 +1,6 @@
 # 一塊日常：每日 USDT/TWD 雙向交易與發票 Dashboard
 
-這是一個以安全為預設的 GitHub Actions 自動化專案。它每天先嘗試 BitoPro 與 MAX 的最低額 USDT/TWD 現貨；MAX 現貨資金不足時可再嘗試低額閃兌，最後把去識別化成交與發票確認狀態發布到 GitHub Pages。
+這是一個以安全為預設的 GitHub Actions 自動化專案。它每天先檢查 BitoPro 與 MAX 是否已有 USDT/TWD 成交，再依餘額嘗試最低額現貨；MAX 現貨資金不足時可再嘗試低額閃兌。GitHub Pages 會把「今日是否成交」與「昨日發票是否開出」並排顯示。
 
 > 重要：Dashboard 只納入具有官方私人下單 API、可由程式安全執行的交易所。沒有官方下單 API 的平台不會執行，也不會顯示。
 
@@ -8,8 +8,8 @@
 
 | 交易所 | `ORDER_USDT=1` 時的計畫量 | 官方 API | 發票現實 |
 | --- | --- | --- | --- |
-| BitoPro | 1 USDT 限價單 | 有，支援 BUY／SELL 與餘額查詢；官方 API 沒有閃兌執行端點 | 有成交先列為待確認；實際發票以交易所通知為準 |
-| MAX | **8 USDT 市價單**；資金不足時預設再試 NT$10 或 1 USDT 閃兌 | 有，支援 buy／sell、現貨餘額與 TWD／USDT 閃兌 | 有成交先列為待確認；實務上可能開立 1 元發票，仍以實際結果為準 |
+| BitoPro | 1 USDT 限價單 | 有，支援 BUY／SELL、餘額與成交歷史；官方 API 沒有閃兌執行端點 | 成交後約兩天內寄送開立通知；交易 API 不含發票明細 |
+| MAX | **8 USDT 市價單**；資金不足時預設再試 NT$10 或 1 USDT 閃兌 | 有，支援 buy／sell、現貨餘額、成交歷史與 TWD／USDT 閃兌 | 成交後約 1–3 個工作天開立；交易 API 不含發票明細 |
 
 交易所可能隨時調整費率、限額與 API。BitoPro 與 MAX 的門檻會在每次執行時重新從官方公開 API 讀取。MaiCoin、HOYA BIT、XREX、ZONE Wallet、TWEX、Chainss／Atrix、KryptoGO 等未提供一般會員官方私人下單 API 的平台均排除，不使用帳密、瀏覽器模擬登入或未公開端點。
 
@@ -18,11 +18,12 @@
 - 預設 `dry-run`，新部署不會下真實訂單。
 - `validate` 模式只呼叫帳戶讀取 API，可在不下單的情況下先驗證 Key、Secret 與簽章。
 - 真實下單需同時設定 `LIVE_TRADING=true` 與固定確認鎖。
-- 每家交易所每天至多一筆正式成交；重跑 Actions 不會重複交易。
+- 每家交易所每天至多一筆正式成交；先查 `data/state.json`／Dashboard，再查官方當日成交歷史，重跑或手動成交後都不會再下新單。
 - BitoPro 使用限價吃單並限制滑價；未成交餘額會送出取消。
 - MAX 閃兌是立即成交 API，只有在現貨資金不足、正式模式及雙重安全鎖都通過時才會呼叫。
 - API Key 只存 GitHub Secrets，請只授予「讀取＋現貨交易」，**不要授予提領權限**。
 - Pages 只發布金額、狀態與原因，不發布 Email、API Key、完整訂單 ID 或完整發票號碼。
+- 發票明細連結只接受無帳密、無 query、無 fragment 的 HTTPS URL；含 token 的私人查詢網址會被丟棄。
 - 任一交易所失敗不會阻止其他交易所完成檢查。
 
 ## 本機執行
@@ -54,7 +55,11 @@ flowchart TD
   B --> C[依交易所數量精度向上取整]
   C --> D{正式模式?}
   D -->|否| E[模擬優先買入並更新 Dashboard]
-  D -->|是| F[讀取 TWD 與 USDT 可用餘額]
+  D -->|是| R{repository 已有今日正式成交?}
+  R -->|是| S[沿用成交紀錄，不呼叫下單 API]
+  R -->|否| Q{官方 API 已有今日 USDT/TWD 成交?}
+  Q -->|是| S
+  Q -->|否| F[讀取 TWD 與 USDT 可用餘額]
   F --> G{TWD 足夠含滑價與費率緩衝?}
   G -->|是| H[買入計畫量 USDT]
   G -->|否| I{扣除 USDT_RESERVE 後仍足夠?}
@@ -65,6 +70,7 @@ flowchart TD
   H --> L[輪詢成交並記錄去識別結果]
   J --> L
   M --> L
+  S --> L
 ```
 
 以預設 `ORDER_USDT=1` 為例：
@@ -81,7 +87,7 @@ MAX 閃兌 fallback 的預設策略：
 - 有 TWD 時，使用 `min(可用 TWD, MAX_CONVERT_TWD_AMOUNT)`，預設最多 NT$10，方向為 TWD → USDT。
 - 沒有 TWD、但扣除保留量後仍有 USDT 時，使用 `min(可出售 USDT, MAX_CONVERT_USDT_AMOUNT)`，預設最多 1 USDT，方向為 USDT → TWD。
 - 官方文件未公開閃兌最低量，所以程式只嘗試設定的低額，不會在失敗後自行加碼；可依實際成交或拒絕訊息再調整 Variables。
-- 為避免 Actions 中斷後重複成交，送出前會查詢當日 TWD／USDT 閃兌紀錄；若已有一筆就沿用並停止再次交易。
+- 為避免 Actions 中斷或手動交易造成重複成交，BitoPro 會查 `GET /orders/trades/usdt_twd`；MAX 會查 `GET /api/v3/wallet/spot/trades` 與 `GET /api/v3/converts`。找到當日任一筆 USDT/TWD 成交就沿用並停止新增交易。
 
 ### 狀態與反饋
 
@@ -94,9 +100,63 @@ MAX 閃兌 fallback 的預設策略：
 | BitoPro 現貨不足，或 MAX 完全沒有可用額 | `已略過` | 否 | 顯示資金不足，本日不交易；不把單純零餘額當程式錯誤 |
 | 交易對維護或非 active | `已略過` | 否 | 顯示市場狀態 |
 | 憑證、簽章、網路或交易所拒單 | `失敗` | 可能未送出或未成交 | 顯示去識別化錯誤；另一家交易所仍會繼續 |
-| 今日已有正式成交 | `已略過` | 否 | 每日防重複保護生效 |
+| repository 或交易所查到今日已有正式成交 | `成交`／`部分成交` | 否 | 沿用既有結果，並清楚標示未再次呼叫下單 API |
 
 程式不再依手續費金額推算發票。現貨或閃兌只要 API 回報成交，就標記「成交待確認」；真正的電子發票號碼與金額仍須以交易所通知、Email 或手機載具確認。
+
+## 今日成交與昨日發票 Dashboard
+
+Dashboard 的 `DAILY PULSE` 區塊對每家交易所顯示兩個獨立事實：
+
+- **今日成交**：正式模式先讀 repository 已保存狀態；沒有紀錄時再查交易所官方私人成交 API。`dry-run` 只顯示「僅模擬，未成交」。
+- **昨日發票**：由 `data/invoice-records.json` 的安全紀錄判斷。若昨日有正式成交但尚未補資料，顯示「成交待確認」；如果沒有正式成交紀錄，顯示「不適用」。
+- **發票連結**：有安全 `detail_url` 時顯示「查看明細」；沒有時連到 BitoPro／MAX 官方查詢說明。官方交易 API 沒有電子發票明細端點，因此無法只靠交易 Key 自動確認發票號碼。
+
+發票通常不是成交後立刻可查。BitoPro 官方說明為交易完成兩天內收到開立通知；MAX 官方說明為完成交易後 1–3 個工作天內開立。因此「昨日尚未查到」不等於最終不會開立，應在後續 workflow 或人工確認後更新狀態。
+
+### 留下安全發票紀錄
+
+編輯 `data/invoice-records.json`，以**成交日**作為 `trade_date`：
+
+```json
+[
+  {
+    "id": "2026-08-05-max",
+    "exchange": "max",
+    "trade_date": "2026-08-05",
+    "status": "confirmed",
+    "checked_at": "2026-08-06T10:30:00+08:00",
+    "issued_date": "2026-08-06",
+    "amount_twd": "1",
+    "masked_number": "AB••••••12",
+    "detail_url": "https://www.einvoice.nat.gov.tw/APCONSUMER/BTC601W/",
+    "note": "已由載具確認"
+  }
+]
+```
+
+`status` 可使用：
+
+| 值 | Dashboard 顯示 | 適用情況 |
+| --- | --- | --- |
+| `pending_confirmation` | 成交待確認 | 已成交，仍在合理開立等待期 |
+| `confirmed` | 已確認 | 已從 Email、載具或財政部平台確認開立 |
+| `not_found` | 尚未查到 | 已查詢但目前沒有資料；之後仍可改成 confirmed |
+| `manual_check` | 待確認 | 資訊不足，需人工再查一次 |
+
+完整發票號碼即使誤填也會在輸出時自動遮罩；但仍不要把發票隨機碼、手機條碼、Email、會員資料或任何查詢 token commit 到 public repository。`detail_url` 必須是沒有帳密、query string 與 fragment 的 HTTPS 網址，否則 runner 不會發布。舊的 `data/confirmed-invoices.json` 仍可讀取，但新紀錄請統一放到 `data/invoice-records.json`。
+
+更新後直接推送 `main` 即可，不需要手動 merge：
+
+```bash
+git add data/invoice-records.json
+git commit -m "chore: update invoice records"
+git push origin main
+```
+
+push 觸發的 workflow 只執行 `python -m bot.runner --refresh`：它不讀交易所 API、不會下單，只把新發票紀錄重新整理進當次 Pages artifact 並發布。
+
+官方查詢說明：[BitoPro 發票查詢與載具綁定](https://support.bitopro.com/hc/zh-tw/articles/360018704812)、[MAX 發票查詢與對領獎](https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066)。
 
 ## GitHub Actions 與 Pages 完整部署
 
@@ -117,7 +177,7 @@ flowchart TD
   D[每日 09:17 排程] --> B
   B --> E[Python 安全測試]
   E --> F{觸發來源}
-  F -->|push main| G[不執行交易，只建置目前資料]
+  F -->|push main| G[refresh：不呼叫交易所，只重建公開狀態與發票紀錄]
   F -->|validate| H[只驗證私人 API]
   F -->|dry-run| I[公開行情模擬，不送單]
   F -->|live 且雙重安全鎖開啟| J[執行真實下單]
@@ -136,7 +196,7 @@ flowchart TD
 
 | 觸發來源 | 何時執行 | 交易行為 | 是否更新資料 | 是否部署 Pages |
 | --- | --- | --- | --- | --- |
-| push 到 `main` | PR 合併或直接推送 | 不呼叫 runner，不下單 | 使用 repository 內現有資料 | 是 |
+| push 到 `main` | 直接推送程式或 `invoice-records.json` | `--refresh`，不呼叫交易所 API、不下單 | 立即把 repository 中的成交／發票紀錄重建進 Pages artifact | 是 |
 | 手動 `workflow_dispatch` | Actions 頁面按 **Run workflow** | 依 `validate`／`dry-run`／`live` | `dry-run` 與成功的 `live` 會更新 | 只有 Branch 選 `main` 才會部署 |
 | 每日 `schedule` | 每日 `01:17 UTC`，台北時間 `09:17` | `LIVE_TRADING=true` 才 live，否則 dry-run | 是 | 是，排程只使用預設分支 |
 
@@ -211,7 +271,7 @@ Variable 不是保密儲存，可能原樣顯示在 log。API Key、Secret、Ema
 8. 重新整理頁面，開啟最新一筆 run。
 9. 確認 `build` job 為綠色勾勾；展開步驟時應看到：
    - `Test trading safeguards`
-   - `Run selected automation mode`
+   - `Run selected automation mode`（push 使用無交易 API 的 `--refresh`）
    - `Save sanitized dashboard data`
    - `Build dashboard`
    - `Upload Pages artifact`
@@ -369,27 +429,6 @@ MAX 首單可保持 `ORDER_USDT=1`。若資金足夠現貨門檻，會送出 8 U
 | 今日已有正式成交 | 每日防重複機制生效，不會再次下單 |
 | Pages 404 | 確認 commit 已在 `main`、Pages Source 正確、`deploy` job 成功 |
 | 排程沒有執行 | 到 Actions 檢查 workflow 是否被停用；也可手動執行 `dry-run` |
-
-## 發票狀態的限制
-
-交易 API 不會回傳電子發票號碼。程式不計算手續費發票門檻：正式現貨或閃兌有成交就標記「成交待確認」，但只有交易所通知、綁定載具或財政部平台能確認是否開立及實際金額。
-
-若要在 dashboard 顯示已確認發票，可把**遮罩後**資料加入 `data/confirmed-invoices.json`：
-
-```json
-[
-  {
-    "id": "2026-07-bitopro-01",
-    "exchange": "BitoPro",
-    "issued_date": "2026-07-12",
-    "amount_twd": "1",
-    "masked_number": "AB••••••12",
-    "status": "issued"
-  }
-]
-```
-
-不要提交完整發票號碼、隨機碼、手機條碼或會員 Email。若需要全自動核對，建議下一階段串接個人載具的合法授權流程，並把完整資料留在私有儲存，不放 GitHub Pages。
 
 ## 免責
 

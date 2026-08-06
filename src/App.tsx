@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
+  DailyExchangeStatus,
   DashboardData,
   ExecutionType,
   ExchangeStatus,
+  InvoiceRecord,
   InvoiceStatus,
   RunEvent,
   RunStatus,
@@ -29,9 +31,17 @@ const fallbackData: DashboardData = {
     pending_invoice_checks: 0,
     total_filled_usdt: "0",
     total_notional_twd: "0",
+    today_trades: 0,
+    yesterday_invoices_issued: 0,
   },
   exchanges: [],
   events: [],
+  daily_status: {
+    today_date: "—",
+    yesterday_date: "—",
+    exchanges: [],
+  },
+  invoice_records: [],
   confirmed_invoices: [],
 };
 
@@ -49,8 +59,14 @@ const invoiceLabels: Record<InvoiceStatus, string> = {
   estimated_eligible: "預估可開立",
   pending_confirmation: "成交待確認",
   confirmed: "已確認",
+  not_found: "尚未查到",
   not_applicable: "不適用",
   manual_check: "待確認",
+};
+
+const dailyTradeLabels = {
+  ...statusLabels,
+  no_record: "尚無紀錄",
 };
 
 const executionLabels: Record<ExecutionType, string> = {
@@ -85,6 +101,15 @@ function formatTime(value: string) {
   }).format(new Date(value));
 }
 
+function formatDate(value: string) {
+  if (!value || value === "—") return "—";
+  return new Intl.DateTimeFormat("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Taipei",
+  }).format(new Date(`${value}T12:00:00+08:00`));
+}
+
 function sanitizeDashboard(payload: DashboardData): DashboardData {
   const exchanges = payload.exchanges
     .filter((exchange) => SUPPORTED_EXCHANGE_IDS.has(exchange.id))
@@ -102,8 +127,15 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       execution_type:
         event.execution_type ?? (event.status === "skipped" ? "none" : "spot"),
     }));
-  const confirmedInvoices = payload.confirmed_invoices.filter((invoice) =>
+  const invoiceRecords = (payload.invoice_records ?? payload.confirmed_invoices ?? []).filter((invoice) =>
     SUPPORTED_INVOICE_NAMES.has(invoice.exchange.toLowerCase()),
+  );
+  const confirmedInvoices = invoiceRecords.filter(
+    (invoice) => invoice.status === "confirmed",
+  );
+  const dailyStatus = payload.daily_status ?? fallbackData.daily_status;
+  const dailyExchanges = dailyStatus.exchanges.filter((row) =>
+    SUPPORTED_EXCHANGE_IDS.has(row.exchange),
   );
   const countedEvents = events.filter((event) =>
     ["filled", "partial", "simulated"].includes(event.status),
@@ -122,6 +154,8 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
     ...payload,
     exchanges,
     events,
+    daily_status: { ...dailyStatus, exchanges: dailyExchanges },
+    invoice_records: invoiceRecords,
     confirmed_invoices: confirmedInvoices,
     summary: {
       ...payload.summary,
@@ -136,6 +170,12 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       ).length,
       total_filled_usdt: String(totalFilled),
       total_notional_twd: String(totalNotional),
+      today_trades: dailyExchanges.filter((row) =>
+        ["filled", "partial"].includes(row.today_trade.status),
+      ).length,
+      yesterday_invoices_issued: dailyExchanges.filter(
+        (row) => row.yesterday_invoice.status === "confirmed",
+      ).length,
     },
   };
 }
@@ -210,6 +250,93 @@ function EventRow({ event }: { event: RunEvent }) {
   );
 }
 
+function DailyPulseRow({ row }: { row: DailyExchangeStatus }) {
+  const trade = row.today_trade;
+  const invoice = row.yesterday_invoice;
+  const tradeIsReal = trade.source === "live_record";
+  const invoiceDetail = [
+    invoice.issued_date ? `開立 ${invoice.issued_date}` : null,
+    invoice.amount_twd ? `NT$ ${formatNumber(invoice.amount_twd, 2)}` : null,
+    invoice.masked_number,
+  ].filter(Boolean).join(" · ");
+
+  return (
+    <article className="daily-row" style={{ "--accent": row.accent } as React.CSSProperties}>
+      <header className="daily-row__exchange">
+        <span className="exchange-mark">{row.short_name}</span>
+        <div><strong>{row.exchange_name}</strong><small>USDT / TWD</small></div>
+      </header>
+
+      <div className="daily-cell">
+        <div className="daily-cell__top">
+          <span>今日成交</span>
+          <span className={`status-pill status-pill--${trade.status}`}>
+            {dailyTradeLabels[trade.status]}
+          </span>
+        </div>
+        <strong className="daily-value">
+          {tradeIsReal && ["filled", "partial"].includes(trade.status)
+            ? `${formatNumber(trade.filled_usdt, 4)} U`
+            : trade.source === "dry_run"
+              ? "僅模擬，未成交"
+              : dailyTradeLabels[trade.status]}
+        </strong>
+        <p>
+          {sideLabels[trade.side]} · {executionLabels[trade.execution_type]}
+          {trade.source === "live_record" ? " · 已通過防重複檢查" : ""}
+        </p>
+        <small>{trade.message}</small>
+      </div>
+
+      <div className="daily-cell daily-cell--invoice">
+        <div className="daily-cell__top">
+          <span>昨日發票</span>
+          <span className={`invoice-badge invoice-badge--${invoice.status}`}>
+            {invoiceLabels[invoice.status]}
+          </span>
+        </div>
+        <strong className="daily-value">
+          {invoice.status === "confirmed" ? invoiceDetail || "已確認開立" : invoiceLabels[invoice.status]}
+        </strong>
+        <p>{invoice.note}</p>
+        <div className="daily-links">
+          {invoice.detail_url && (
+            <a href={invoice.detail_url} target="_blank" rel="noreferrer">查看明細 ↗</a>
+          )}
+          <a href={invoice.lookup_url} target="_blank" rel="noreferrer">
+            {invoice.detail_url ? "官方查詢方式 ↗" : "前往官方查詢說明 ↗"}
+          </a>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InvoiceRecordCard({ record }: { record: InvoiceRecord }) {
+  const exchangeName = record.exchange === "bitopro" ? "BitoPro" : "MAX Exchange";
+  return (
+    <article className="invoice-record-card">
+      <div className="invoice-record-card__top">
+        <div>
+          <strong>{exchangeName}</strong>
+          <small>成交日 {record.trade_date ?? "未指定"}</small>
+        </div>
+        <span className={`invoice-badge invoice-badge--${record.status}`}>
+          {invoiceLabels[record.status]}
+        </span>
+      </div>
+      <p>
+        {record.masked_number ?? "未保存號碼"}
+        {record.amount_twd ? ` · NT$ ${formatNumber(record.amount_twd, 2)}` : ""}
+      </p>
+      <small>{record.note ?? (record.checked_at ? `最後確認 ${formatTime(record.checked_at)}` : "尚無備註")}</small>
+      {record.detail_url && (
+        <a href={record.detail_url} target="_blank" rel="noreferrer">查看安全明細 ↗</a>
+      )}
+    </article>
+  );
+}
+
 function App() {
   const [data, setData] = useState<DashboardData>(fallbackData);
   const [filter, setFilter] = useState<"all" | "executed" | "skipped">("all");
@@ -275,9 +402,9 @@ function App() {
         <div className="hero" id="top">
           <div className="hero-copy">
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
-            <h1>每日 USDT 自動化，<br /><em>結果要算清楚。</em></h1>
+            <h1>今天有沒有成交，<br /><em>昨天有沒有開票。</em></h1>
             <p className="hero-lead">
-              先用最低額現貨成交；資金不足時，支援官方閃兌 API 的平台再嘗試低額閃兌。發票只追蹤實際成交，不用手續費推算。
+              每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT；MAX 現貨資金不足時再試低額閃兌。執行前會查官方成交紀錄，發票則保存後續確認結果。
             </p>
           </div>
 
@@ -306,26 +433,50 @@ function App() {
 
         <div className="metric-grid">
           <article className="metric-card metric-card--primary">
-            <p>設定下限</p>
-            <strong>{formatNumber(data.target_usdt, 2)}<span> USDT</span></strong>
-            <small>不是全平台固定成交量</small>
+            <p>今日正式成交</p>
+            <strong>{data.summary.today_trades}<span> / {data.summary.exchanges_total} 家</span></strong>
+            <small>模擬執行不計入成交</small>
           </article>
           <article className="metric-card">
-            <p>{data.mode === "live" ? "累計成交" : "模擬成交"}</p>
+            <p>昨日發票已開立</p>
+            <strong>{data.summary.yesterday_invoices_issued}<span> / {data.summary.exchanges_total} 家</span></strong>
+            <small>依 invoice-records.json 的確認紀錄</small>
+          </article>
+          <article className="metric-card">
+            <p>紀錄成交量</p>
             <strong>{formatNumber(data.summary.total_filled_usdt, 4)}<span> U</span></strong>
             <small>正式與模擬結果分開標示</small>
           </article>
-          <article className="metric-card">
-            <p>成交額</p>
-            <strong><span>NT$ </span>{formatNumber(data.summary.total_notional_twd, 2)}</strong>
-            <small>買入與賣出均計入</small>
-          </article>
           <article className="metric-card metric-card--warning">
-            <p>已確認發票</p>
-            <strong>{data.summary.confirmed_invoices}<span> 張</span></strong>
-            <small>不把零元預估算進來</small>
+            <p>發票待確認</p>
+            <strong>{data.summary.pending_invoice_checks}<span> 筆</span></strong>
+            <small>官方交易 API 不會回傳發票</small>
           </article>
         </div>
+
+        <section className="section-block daily-pulse">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">DAILY PULSE</p>
+              <h2>今日成交 × 昨日發票</h2>
+            </div>
+            <p>
+              今日 {formatDate(data.daily_status.today_date)} 先查重再決定是否下單；昨日 {formatDate(data.daily_status.yesterday_date)} 的發票狀態由安全紀錄補上。
+            </p>
+          </div>
+          <div className="daily-list">
+            {data.daily_status.exchanges.length ? (
+              data.daily_status.exchanges.map((row) => (
+                <DailyPulseRow key={row.exchange} row={row} />
+              ))
+            ) : (
+              <div className="empty-state">尚未產生每日狀態。</div>
+            )}
+          </div>
+          <p className="daily-disclaimer">
+            發票明細若沒有安全直連，會顯示官方查詢說明；含查詢 token、完整號碼或隨機碼的網址不會發布到 Pages。
+          </p>
+        </section>
 
         <section className="section-block">
           <div className="section-heading">
@@ -355,7 +506,7 @@ function App() {
               <span className="big-zero">{data.summary.pending_invoice_checks}<span> 筆待確認</span></span>
             </div>
             <p className="panel-copy">
-              現貨或閃兌只要回報成交，就先列為「成交待確認」。系統不再依手續費金額推算；真正開立結果仍以交易所通知、Email 或手機載具為準。
+              現貨或閃兌只要回報成交，就先列為「成交待確認」。隔日可在 invoice-records.json 補上已開立、尚未查到或待人工確認；真正結果仍以交易所通知、Email 或手機載具為準。
             </p>
             <div className="invoice-flow" aria-label="發票狀態流程">
               <div className="flow-step flow-step--active"><span>01</span><strong>成交</strong><small>API 回報</small></div>
@@ -380,7 +531,7 @@ function App() {
             </div>
             <div className="health-list">
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>安全鎖</strong><small>預設不會真實下單</small></p></div>
-              <div><span className="health-icon health-icon--ok">✓</span><p><strong>重複防護</strong><small>同交易所每日最多一次</small></p></div>
+              <div><span className="health-icon health-icon--ok">✓</span><p><strong>雙層重複防護</strong><small>repository 紀錄＋官方當日成交 API</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>低額成交策略</strong><small>現貨優先；MAX 資金不足時嘗試閃兌</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>公開資料最小化</strong><small>不含憑證與訂單編號</small></p></div>
               <div><span className="health-icon">i</span><p><strong>排程時間</strong><small>每日 09:17（台北時間）</small></p></div>
@@ -422,6 +573,28 @@ function App() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="section-block invoice-records-section">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">INVOICE LEDGER</p>
+              <h2>發票確認紀錄</h2>
+            </div>
+            <p>只顯示遮罩號碼、安全 HTTPS 連結與人工確認備註；完整私人資料不會進入 Pages。</p>
+          </div>
+          {data.invoice_records.length ? (
+            <div className="invoice-record-grid">
+              {[...data.invoice_records]
+                .sort((a, b) => String(b.trade_date ?? b.issued_date ?? "").localeCompare(String(a.trade_date ?? a.issued_date ?? "")))
+                .slice(0, 8)
+                .map((record) => <InvoiceRecordCard key={record.id} record={record} />)}
+            </div>
+          ) : (
+            <div className="empty-state invoice-empty">
+              尚未加入發票確認紀錄；成交後可更新 data/invoice-records.json。
+            </div>
+          )}
         </section>
       </section>
 

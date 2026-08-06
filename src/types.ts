@@ -13,8 +13,11 @@ export type InvoiceStatus =
   | "estimated_eligible"
   | "pending_confirmation"
   | "confirmed"
+  | "not_found"
   | "not_applicable"
   | "manual_check";
+
+export type DailyTradeStatus = RunStatus | "no_record";
 
 export interface ExchangeStatus {
   id: string;
@@ -49,13 +52,48 @@ export interface RunEvent {
   mode: "dry_run" | "live";
 }
 
-export interface ConfirmedInvoice {
+export interface InvoiceRecord {
   id: string;
   exchange: string;
-  issued_date: string;
-  amount_twd: string;
-  masked_number: string;
-  status: "issued" | "won" | "not_won";
+  trade_date: string | null;
+  status: InvoiceStatus;
+  checked_at: string | null;
+  issued_date: string | null;
+  amount_twd: string | null;
+  masked_number: string | null;
+  detail_url: string | null;
+  note: string | null;
+}
+
+export interface DailyExchangeStatus {
+  exchange: string;
+  exchange_name: string;
+  short_name: string;
+  accent: string;
+  today_trade: {
+    status: DailyTradeStatus;
+    side: TradeSide;
+    execution_type: ExecutionType;
+    filled_usdt: string;
+    message: string;
+    source: "live_record" | "dry_run" | "none";
+  };
+  yesterday_invoice: {
+    status: InvoiceStatus;
+    checked_at: string | null;
+    issued_date: string | null;
+    amount_twd: string | null;
+    masked_number: string | null;
+    detail_url: string | null;
+    lookup_url: string;
+    note: string;
+  };
+}
+
+export interface DailyStatus {
+  today_date: string;
+  yesterday_date: string;
+  exchanges: DailyExchangeStatus[];
 }
 
 export interface DashboardData {
@@ -73,8 +111,12 @@ export interface DashboardData {
     pending_invoice_checks: number;
     total_filled_usdt: string;
     total_notional_twd: string;
+    today_trades: number;
+    yesterday_invoices_issued: number;
   };
   exchanges: ExchangeStatus[];
   events: RunEvent[];
-  confirmed_invoices: ConfirmedInvoice[];
+  daily_status: DailyStatus;
+  invoice_records: InvoiceRecord[];
+  confirmed_invoices: InvoiceRecord[];
 }

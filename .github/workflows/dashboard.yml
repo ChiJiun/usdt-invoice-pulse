@@ -61,10 +61,11 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Run selected automation mode
-        if: github.event_name != 'push'
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "validate" ]]; then
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            python -m bot.runner --refresh
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "validate" ]]; then
             python -m bot.verify
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "live" && "$LIVE_TRADING" != "true" ]]; then
             echo "LIVE_TRADING 尚未開啟，已拒絕真實下單。" >&2
