@@ -34,6 +34,9 @@ jobs:
     env:
       ORDER_USDT: ${{ vars.ORDER_USDT || '1' }}
       USDT_RESERVE: ${{ vars.USDT_RESERVE || '0' }}
+      MAX_CONVERT_ENABLED: ${{ vars.MAX_CONVERT_ENABLED || 'true' }}
+      MAX_CONVERT_TWD_AMOUNT: ${{ vars.MAX_CONVERT_TWD_AMOUNT || '10' }}
+      MAX_CONVERT_USDT_AMOUNT: ${{ vars.MAX_CONVERT_USDT_AMOUNT || '1' }}
       LIVE_TRADING: ${{ vars.LIVE_TRADING || 'false' }}
       CONFIRM_LIVE_TRADING: ${{ secrets.CONFIRM_LIVE_TRADING }}
       BITOPRO_ENABLED: ${{ vars.BITOPRO_ENABLED || 'true' }}

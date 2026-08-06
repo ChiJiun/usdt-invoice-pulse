@@ -1,6 +1,6 @@
 # 一塊日常：每日 USDT/TWD 雙向交易與發票 Dashboard
 
-這是一個以安全為預設的 GitHub Actions 自動化專案。它每天讀取 BitoPro 與 MAX 的官方門檻，把設定量自動提高到各平台可成交的最低量，再依可用餘額決定買入、賣出或略過，最後把去識別化結果發布到 GitHub Pages。
+這是一個以安全為預設的 GitHub Actions 自動化專案。它每天先嘗試 BitoPro 與 MAX 的最低額 USDT/TWD 現貨；MAX 現貨資金不足時可再嘗試低額閃兌，最後把去識別化成交與發票確認狀態發布到 GitHub Pages。
 
 > 重要：Dashboard 只納入具有官方私人下單 API、可由程式安全執行的交易所。沒有官方下單 API 的平台不會執行，也不會顯示。
 
@@ -8,8 +8,8 @@
 
 | 交易所 | `ORDER_USDT=1` 時的計畫量 | 官方 API | 發票現實 |
 | --- | --- | --- | --- |
-| BitoPro | 1 USDT 限價單 | 有，支援 BUY／SELL 與餘額查詢 | 發票依每日手續費彙總；小額交易可能是零元發票 |
-| MAX | **8 USDT 市價單**；若 8 USDT 未達 NT$250，會再向上調整 | 有，支援 buy／sell 與現貨餘額查詢 | 依每日實收手續費彙總，四捨五入滿 1 元才開立 |
+| BitoPro | 1 USDT 限價單 | 有，支援 BUY／SELL 與餘額查詢；官方 API 沒有閃兌執行端點 | 有成交先列為待確認；實際發票以交易所通知為準 |
+| MAX | **8 USDT 市價單**；資金不足時預設再試 NT$10 或 1 USDT 閃兌 | 有，支援 buy／sell、現貨餘額與 TWD／USDT 閃兌 | 有成交先列為待確認；實務上可能開立 1 元發票，仍以實際結果為準 |
 
 交易所可能隨時調整費率、限額與 API。BitoPro 與 MAX 的門檻會在每次執行時重新從官方公開 API 讀取。MaiCoin、HOYA BIT、XREX、ZONE Wallet、TWEX、Chainss／Atrix、KryptoGO 等未提供一般會員官方私人下單 API 的平台均排除，不使用帳密、瀏覽器模擬登入或未公開端點。
 
@@ -20,6 +20,7 @@
 - 真實下單需同時設定 `LIVE_TRADING=true` 與固定確認鎖。
 - 每家交易所每天至多一筆正式成交；重跑 Actions 不會重複交易。
 - BitoPro 使用限價吃單並限制滑價；未成交餘額會送出取消。
+- MAX 閃兌是立即成交 API，只有在現貨資金不足、正式模式及雙重安全鎖都通過時才會呼叫。
 - API Key 只存 GitHub Secrets，請只授予「讀取＋現貨交易」，**不要授予提領權限**。
 - Pages 只發布金額、狀態與原因，不發布 Email、API Key、完整訂單 ID 或完整發票號碼。
 - 任一交易所失敗不會阻止其他交易所完成檢查。
@@ -58,9 +59,12 @@ flowchart TD
   G -->|是| H[買入計畫量 USDT]
   G -->|否| I{扣除 USDT_RESERVE 後仍足夠?}
   I -->|是| J[賣出計畫量 USDT]
-  I -->|否| K[略過，不送單]
+  I -->|否| K{官方閃兌 API 可用且已啟用?}
+  K -->|MAX| M[以較低的 NT$10 或 1 USDT 嘗試閃兌]
+  K -->|BitoPro 或未啟用| N[略過，不送單]
   H --> L[輪詢成交並記錄去識別結果]
   J --> L
+  M --> L
 ```
 
 以預設 `ORDER_USDT=1` 為例：
@@ -70,21 +74,29 @@ flowchart TD
 - 若 MAX 的 USDT/TWD 價格低到 `8 × 價格 < 250`，程式會依 0.01 USDT 精度再向上提高，不會送出低於 NT$250 的訂單。
 - 若把 `ORDER_USDT` 設成 12，兩家計畫量都至少是 12 USDT。
 
-方向不是每日買賣輪替，而是固定的餘額優先序：**TWD 足夠就買；TWD 不足但 USDT 足夠就賣；兩邊都不足就略過。** `USDT_RESERVE` 可保留不想被自動賣掉的 USDT，預設為 0。
+方向不是每日買賣輪替，而是固定的餘額優先序：**TWD 足夠就買現貨；TWD 不足但 USDT 足夠就賣現貨；MAX 兩邊都達不到現貨門檻時，再嘗試低額閃兌。** `USDT_RESERVE` 可保留不想被自動賣掉的 USDT，預設為 0。
+
+MAX 閃兌 fallback 的預設策略：
+
+- 有 TWD 時，使用 `min(可用 TWD, MAX_CONVERT_TWD_AMOUNT)`，預設最多 NT$10，方向為 TWD → USDT。
+- 沒有 TWD、但扣除保留量後仍有 USDT 時，使用 `min(可出售 USDT, MAX_CONVERT_USDT_AMOUNT)`，預設最多 1 USDT，方向為 USDT → TWD。
+- 官方文件未公開閃兌最低量，所以程式只嘗試設定的低額，不會在失敗後自行加碼；可依實際成交或拒絕訊息再調整 Variables。
+- 為避免 Actions 中斷後重複成交，送出前會查詢當日 TWD／USDT 閃兌紀錄；若已有一筆就沿用並停止再次交易。
 
 ### 狀態與反饋
 
 | 情況 | Dashboard 狀態 | 是否送單 | 反饋 |
 | --- | --- | --- | --- |
 | dry-run | `模擬完成` | 否 | 顯示各平台自動調整後的計畫量；因不讀私人餘額，以優先買入情境估算 |
-| TWD 足夠 | `成交`／`部分成交`／`失敗` | 買單 | 顯示「買入」、實際成交量、均價、手續費估算與發票估算 |
+| TWD 足夠 | `成交`／`部分成交`／`失敗` | 買單 | 顯示「買入」、實際成交量、均價與「成交待確認」 |
 | TWD 不足、USDT 足夠 | `成交`／`部分成交`／`失敗` | 賣單 | 顯示「賣出」及相同成交摘要 |
-| TWD 與可出售 USDT 都不足 | `已略過` | 否 | 顯示資金不足，本日不交易；不把資金不足當程式錯誤 |
+| MAX 現貨資金不足但仍有小額 TWD／USDT | `成交` 或 `失敗` | 閃兌 | 最多嘗試設定的低額；成功標示「閃兌／成交待確認」，拒絕時不自動加碼 |
+| BitoPro 現貨不足，或 MAX 完全沒有可用額 | `已略過` | 否 | 顯示資金不足，本日不交易；不把單純零餘額當程式錯誤 |
 | 交易對維護或非 active | `已略過` | 否 | 顯示市場狀態 |
 | 憑證、簽章、網路或交易所拒單 | `失敗` | 可能未送出或未成交 | 顯示去識別化錯誤；另一家交易所仍會繼續 |
 | 今日已有正式成交 | `已略過` | 否 | 每日防重複保護生效 |
 
-成交只代表預估會產生手續費；交易 API 不會回傳真正的電子發票號碼，仍須以交易所通知、Email 或手機載具確認。
+程式不再依手續費金額推算發票。現貨或閃兌只要 API 回報成交，就標記「成交待確認」；真正的電子發票號碼與金額仍須以交易所通知、Email 或手機載具確認。
 
 ## GitHub Actions 與 Pages 完整部署
 
@@ -178,6 +190,9 @@ flowchart TD
 | --- | --- | --- | --- |
 | `ORDER_USDT` | `1` | 否 | 希望每家至少交易的 USDT；程式會依平台最低 USDT／TWD 門檻向上調整 |
 | `USDT_RESERVE` | `0` | 否 | 賣出前必須保留的 USDT；例如設 `20` 就不會動用最後 20 USDT |
+| `MAX_CONVERT_ENABLED` | `true` | 否 | MAX 現貨資金不足時是否允許嘗試官方閃兌 |
+| `MAX_CONVERT_TWD_AMOUNT` | `10` | 否 | TWD → USDT 閃兌單次上限；若餘額更少就只使用可用餘額 |
+| `MAX_CONVERT_USDT_AMOUNT` | `1` | 否 | USDT → TWD 閃兌單次上限；仍會先扣除 `USDT_RESERVE` |
 | `LIVE_TRADING` | `false` | 否 | 真實交易總開關；第一次部署必須保持 `false` |
 | `BITOPRO_ENABLED` | `true` | 否 | 載入 BitoPro adapter |
 | `MAX_ENABLED` | `true` | 否 | 載入 MAX adapter；`ORDER_USDT=1` 時會自動交易 8 USDT（仍以即時門檻為準） |
@@ -203,7 +218,7 @@ Variable 不是保密儲存，可能原樣顯示在 log。API Key、Secret、Ema
 10. 確認 `deploy` job 也為綠色勾勾，並點擊 job 上方的 deployment URL。
 11. 打開 Dashboard，確認顯示 `安全模擬`、BitoPro 計畫 1 USDT、MAX 計畫 8 USDT，且沒有真實訂單編號。
 
-`dry-run` 只讀取公開行情與最低下單限制，不需要交易所 API Key，也不會送出訂單。GitHub Pages 更新可能需要數分鐘；可到 **Settings → Pages** 或 workflow 的 `deploy` job 查看最新部署。
+`dry-run` 只讀取公開行情與最低下單限制，不讀私人餘額，因此只顯示現貨模擬，不會假設閃兌成交，也不需要交易所 API Key。GitHub Pages 更新可能需要數分鐘；可到 **Settings → Pages** 或 workflow 的 `deploy` job 查看最新部署。
 
 也可以使用 GitHub CLI 手動執行與等待結果：
 
@@ -258,7 +273,9 @@ gh run watch --exit-status
 3. **不要開啟提領權限。**
 4. 保存 Access Key 與 Secret Key。
 
-官方文件：<https://campaign.maicoin.com/api-document>
+本專案的閃兌 fallback 使用官方 `POST /api/v3/convert`，查重使用 `GET /api/v3/converts`；兩者都是私人 API，會與現貨訂單共用同一組 MAX API Key 與 live 安全鎖。
+
+官方文件：<https://campaign.maicoin.com/api-document>、<https://max-api.maicoin.com/doc/v3.html>
 
 GitHub-hosted runner 使用動態共用 IP，不能提供固定 IP 白名單。如果帳戶政策要求固定來源 IP，請不要使用此免費部署方式，應改用具有固定出站 IP 的 self-hosted runner。
 
@@ -309,7 +326,7 @@ GitHub-hosted runner 使用動態共用 IP，不能提供固定 IP 白名單。�
 6. 到 BitoPro 官方訂單紀錄核對成交數量，再查看 Dashboard 的去識別化結果。
 7. 若結果與預期不同，立刻把 `LIVE_TRADING` 改回 `false`。
 
-MAX 首單可保持 `ORDER_USDT=1`，但實際會送出 8 USDT（或即時門檻要求的更高數量）。啟用 MAX 前，請先用 dry-run 看 Dashboard 的「本次計畫」，並準備足夠買入約 NT$250 以上的 TWD，或至少同等計畫量的可出售 USDT。
+MAX 首單可保持 `ORDER_USDT=1`。若資金足夠現貨門檻，會送出 8 USDT（或即時門檻要求的更高數量）；若不足但仍有小額餘額，則依設定最多嘗試 NT$10 或 1 USDT 閃兌。建議第一次 MAX live 前先把 `MAX_CONVERT_ENABLED=false` 驗證現貨，確認後再開啟閃兌 fallback。
 
 首次正式單成功後，schedule 才會在 `LIVE_TRADING=true` 時自動呼叫正式模式。若保持 `false`，每日排程只會 dry-run。
 
@@ -345,16 +362,17 @@ MAX 首單可保持 `ORDER_USDT=1`，但實際會送出 8 USDT（或即時門檻
 | --- | --- |
 | MAX 顯示 8 USDT | 正常；`ORDER_USDT=1` 是設定下限，MAX 會自動提高到官方最低 8 USDT |
 | 計畫量高於 8 USDT | MAX 的最低成交額 NT$250 換算後高於 8 USDT，或你的 `ORDER_USDT` 設得更高 |
+| MAX 顯示閃兌失敗 | 官方未公開最低閃兌量；目前低額被拒絕時不會自動加碼，可依錯誤與實際需求調高 `MAX_CONVERT_TWD_AMOUNT` 或 `MAX_CONVERT_USDT_AMOUNT` |
 | `LIVE_TRADING 尚未開啟` | workflow 選了 `live`，但 variable 仍是 `false` |
 | `Unauthorized api key`／簽章失敗 | 檢查 Key、Secret、BitoPro Email、權限與 Key 是否已過期；不要把值貼到 log |
-| 餘額不足而略過 | 可補 TWD 讓程式買入、補足 USDT 讓程式賣出，或調低 `USDT_RESERVE`；不會自動改做其他交易對 |
+| 餘額不足而略過 | BitoPro 沒有官方閃兌執行 API；MAX 則表示完全沒有可用額、fallback 被關閉，或已扣除 `USDT_RESERVE` |
 | 今日已有正式成交 | 每日防重複機制生效，不會再次下單 |
 | Pages 404 | 確認 commit 已在 `main`、Pages Source 正確、`deploy` job 成功 |
 | 排程沒有執行 | 到 Actions 檢查 workflow 是否被停用；也可手動執行 `dry-run` |
 
 ## 發票狀態的限制
 
-交易 API 不會回傳電子發票號碼。程式會依實際或估算手續費標記「預估零元／預估可開立」，但只有交易所通知、綁定載具或財政部平台能確認真正開立。
+交易 API 不會回傳電子發票號碼。程式不計算手續費發票門檻：正式現貨或閃兌有成交就標記「成交待確認」，但只有交易所通知、綁定載具或財政部平台能確認是否開立及實際金額。
 
 若要在 dashboard 顯示已確認發票，可把**遮罩後**資料加入 `data/confirmed-invoices.json`：
 

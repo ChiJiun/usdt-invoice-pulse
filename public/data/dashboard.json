@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06T22:12:42+08:00",
+  "generated_at": "2026-08-06T22:35:09+08:00",
   "local_date": "2026-08-06",
   "timezone": "Asia/Taipei",
   "mode": "dry_run",
@@ -10,9 +10,9 @@
     "filled_runs": 0,
     "skipped_runs": 0,
     "confirmed_invoices": 0,
-    "eligible_invoice_estimates": 0,
+    "pending_invoice_checks": 0,
     "total_filled_usdt": "9",
-    "total_notional_twd": "290.275"
+    "total_notional_twd": "290.373"
   },
   "exchanges": [
     {
@@ -24,10 +24,11 @@
       "minimum_usdt": "1",
       "minimum_twd": null,
       "planned_usdt": "1",
+      "convert_supported": false,
       "target_eligible": true,
-      "invoice_rule": "依每日成交手續費彙總；未滿一元可能為零元發票",
+      "invoice_rule": "有成交即列為待確認；是否開立與金額以實際電子發票為準",
       "today_status": "simulated",
-      "note": "只做 USDT/TWD；TWD 足夠時買入，否則在 USDT 足夠時賣出。"
+      "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。"
     },
     {
       "id": "max",
@@ -38,10 +39,11 @@
       "minimum_usdt": "8.0",
       "minimum_twd": "250.0",
       "planned_usdt": "8.0",
+      "convert_supported": true,
       "target_eligible": true,
-      "invoice_rule": "依每日實收交易手續費彙總，四捨五入滿一元才開立",
+      "invoice_rule": "現貨或閃兌有成交即列為待確認；以實際電子發票為準",
       "today_status": "simulated",
-      "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元，程式會自動提高計畫量。"
+      "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元；現貨資金不足時可改試低額閃兌。"
     }
   ],
   "events": [
@@ -50,15 +52,15 @@
       "exchange_name": "BitoPro",
       "status": "simulated",
       "side": "buy",
+      "execution_type": "spot",
       "requested_usdt": "1",
       "filled_usdt": "1",
-      "avg_price_twd": "32.259",
-      "fee_twd": "0.064518",
-      "invoice_status": "estimated_zero",
+      "avg_price_twd": "32.261",
+      "invoice_status": "not_applicable",
       "message": "已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T22:12:43+08:00",
-      "id": "40d43ae57ada09b4",
+      "occurred_at": "2026-08-06T22:35:09+08:00",
+      "id": "e1cda9598095674e",
       "date": "2026-08-06"
     },
     {
@@ -66,15 +68,15 @@
       "exchange_name": "MAX Exchange",
       "status": "simulated",
       "side": "buy",
+      "execution_type": "spot",
       "requested_usdt": "8",
       "filled_usdt": "8",
-      "avg_price_twd": "32.252",
-      "fee_twd": "0.4128256",
-      "invoice_status": "estimated_zero",
-      "message": "已自動提高至 MAX 最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
+      "avg_price_twd": "32.264",
+      "invoice_status": "not_applicable",
+      "message": "已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
       "mode": "dry_run",
-      "occurred_at": "2026-08-06T22:12:43+08:00",
-      "id": "1455209617ab0ecb",
+      "occurred_at": "2026-08-06T22:35:10+08:00",
+      "id": "e8ca36981cf95c3a",
       "date": "2026-08-06"
     }
   ],

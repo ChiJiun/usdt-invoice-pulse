@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   DashboardData,
+  ExecutionType,
   ExchangeStatus,
   InvoiceStatus,
   RunEvent,
@@ -25,7 +26,7 @@ const fallbackData: DashboardData = {
     filled_runs: 0,
     skipped_runs: 0,
     confirmed_invoices: 0,
-    eligible_invoice_estimates: 0,
+    pending_invoice_checks: 0,
     total_filled_usdt: "0",
     total_notional_twd: "0",
   },
@@ -46,9 +47,16 @@ const statusLabels: Record<RunStatus | "waiting", string> = {
 const invoiceLabels: Record<InvoiceStatus, string> = {
   estimated_zero: "預估零元",
   estimated_eligible: "預估可開立",
+  pending_confirmation: "成交待確認",
   confirmed: "已確認",
   not_applicable: "不適用",
   manual_check: "待確認",
+};
+
+const executionLabels: Record<ExecutionType, string> = {
+  spot: "現貨",
+  convert: "閃兌",
+  none: "未執行",
 };
 
 const sideLabels: Record<TradeSide, string> = {
@@ -84,12 +92,15 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       ...exchange,
       minimum_twd: exchange.minimum_twd ?? null,
       planned_usdt: exchange.planned_usdt ?? exchange.minimum_usdt,
+      convert_supported: exchange.convert_supported ?? false,
     }));
   const events = payload.events
     .filter((event) => SUPPORTED_EXCHANGE_IDS.has(event.exchange))
     .map((event) => ({
       ...event,
       side: event.side ?? (event.mode === "dry_run" ? "buy" : "none"),
+      execution_type:
+        event.execution_type ?? (event.status === "skipped" ? "none" : "spot"),
     }));
   const confirmedInvoices = payload.confirmed_invoices.filter((invoice) =>
     SUPPORTED_INVOICE_NAMES.has(invoice.exchange.toLowerCase()),
@@ -120,8 +131,8 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
         .length,
       skipped_runs: events.filter((event) => event.status === "skipped").length,
       confirmed_invoices: confirmedInvoices.length,
-      eligible_invoice_estimates: events.filter(
-        (event) => event.invoice_status === "estimated_eligible",
+      pending_invoice_checks: events.filter(
+        (event) => event.invoice_status === "pending_confirmation",
       ).length,
       total_filled_usdt: String(totalFilled),
       total_notional_twd: String(totalNotional),
@@ -154,6 +165,10 @@ function ExchangeCard({
         </strong>
       </div>
       <p className="exchange-note">{exchange.note}</p>
+      <div className="capability-line">
+        <span>{exchange.convert_supported ? "現貨＋閃兌 fallback" : "現貨交易"}</span>
+        <small>{exchange.convert_supported ? "官方 API 支援" : "不使用非公開閃兌端點"}</small>
+      </div>
       <div className="eligibility-line">
         <span className={exchange.target_eligible ? "tick tick--yes" : "tick"} aria-hidden="true" />
         本次計畫 {formatNumber(exchange.planned_usdt, 4)} USDT
@@ -186,10 +201,8 @@ function EventRow({ event }: { event: RunEvent }) {
           {event.avg_price_twd ? `@ NT$ ${formatNumber(event.avg_price_twd, 3)}` : "—"}
         </div>
       </td>
-      <td className="numeric">
-        <div className="table-primary">
-          {event.fee_twd ? `NT$ ${formatNumber(event.fee_twd, 4)}` : "—"}
-        </div>
+      <td>
+        <div className="table-primary">{executionLabels[event.execution_type]}</div>
         <div className="table-secondary">{invoiceLabels[event.invoice_status]}</div>
       </td>
       <td className="message-cell">{event.message}</td>
@@ -264,7 +277,7 @@ function App() {
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
             <h1>每日 USDT 自動化，<br /><em>結果要算清楚。</em></h1>
             <p className="hero-lead">
-              每家平台先套用自己的最低量，再依餘額決定買入、賣出或略過；交易結果與發票資格都在同一張日報裡。
+              先用最低額現貨成交；資金不足時，支援官方閃兌 API 的平台再嘗試低額閃兌。發票只追蹤實際成交，不用手續費推算。
             </p>
           </div>
 
@@ -339,10 +352,10 @@ function App() {
                 <p className="eyebrow">INVOICE REALITY</p>
                 <h2>成交 ≠ 有效發票</h2>
               </div>
-              <span className="big-zero">{data.summary.eligible_invoice_estimates}<span> 筆預估</span></span>
+              <span className="big-zero">{data.summary.pending_invoice_checks}<span> 筆待確認</span></span>
             </div>
             <p className="panel-copy">
-              系統依各交易所的實際計畫量、成交價與設定費率估算發票資格。真正開立結果仍須以交易所通知、Email 或手機載具為準。
+              現貨或閃兌只要回報成交，就先列為「成交待確認」。系統不再依手續費金額推算；真正開立結果仍以交易所通知、Email 或手機載具為準。
             </p>
             <div className="invoice-flow" aria-label="發票狀態流程">
               <div className="flow-step flow-step--active"><span>01</span><strong>成交</strong><small>API 回報</small></div>
@@ -368,7 +381,7 @@ function App() {
             <div className="health-list">
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>安全鎖</strong><small>預設不會真實下單</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>重複防護</strong><small>同交易所每日最多一次</small></p></div>
-              <div><span className="health-icon health-icon--ok">✓</span><p><strong>雙向餘額策略</strong><small>TWD 優先買入，否則賣出 USDT</small></p></div>
+              <div><span className="health-icon health-icon--ok">✓</span><p><strong>低額成交策略</strong><small>現貨優先；MAX 資金不足時嘗試閃兌</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>公開資料最小化</strong><small>不含憑證與訂單編號</small></p></div>
               <div><span className="health-icon">i</span><p><strong>排程時間</strong><small>每日 09:17（台北時間）</small></p></div>
               <div><span className="health-icon">↗</span><p><strong><a href={DEPLOYMENT_GUIDE_URL} target="_blank" rel="noreferrer">完整部署手冊</a></strong><small>Pages、Secrets、驗證與首單</small></p></div>
@@ -398,7 +411,7 @@ function App() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>交易所</th><th>結果</th><th>方向</th><th className="numeric">成交</th><th className="numeric">費用／發票</th><th>說明</th></tr>
+                <tr><th>交易所</th><th>結果</th><th>方向</th><th className="numeric">成交</th><th>管道／發票</th><th>說明</th></tr>
               </thead>
               <tbody>
                 {visibleEvents.length ? (

@@ -155,6 +155,8 @@ a { color: inherit; text-decoration: none; }
 .limit-row { display: flex; justify-content: space-between; align-items: baseline; gap: 18px; padding: 15px 0; border-block: 1px solid var(--line); color: var(--muted); font-size: 13px; }
 .limit-row strong { color: var(--ink); font: 500 15px/1.35 "DM Mono", monospace; text-align: right; }
 .exchange-note { margin: 0; color: var(--muted); line-height: 1.65; font-size: 13px; flex: 1; }
+.capability-line { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 12px; border-radius: 12px; background: rgba(23,35,31,.045); font-size: 12px; font-weight: 700; }
+.capability-line small { color: var(--muted); font-size: 10px; font-weight: 500; text-align: right; }
 .eligibility-line { display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 600; }
 .tick { width: 16px; height: 16px; border: 1px solid #a4a7a0; border-radius: 50%; position: relative; }
 .tick--yes { background: var(--ink); border-color: var(--ink); }

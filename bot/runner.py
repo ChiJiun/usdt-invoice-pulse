@@ -105,6 +105,7 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
             state.setdefault("live_runs", {}).setdefault(today, {})[adapter.id] = {
                 "status": result.status,
                 "side": result.side,
+                "execution_type": result.execution_type,
                 "filled_usdt": decimal_text(result.filled_usdt),
                 "reference_hash": result.reference_hash,
             }
@@ -170,10 +171,10 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
                 1 for event in events if event.get("status") == "skipped"
             ),
             "confirmed_invoices": len(confirmed),
-            "eligible_invoice_estimates": sum(
+            "pending_invoice_checks": sum(
                 1
                 for event in events
-                if event.get("invoice_status") == "estimated_eligible"
+                if event.get("invoice_status") == "pending_confirmation"
             ),
             "total_filled_usdt": decimal_text(total_filled),
             "total_notional_twd": decimal_text(total_notional),

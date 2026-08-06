@@ -35,10 +35,10 @@ class ExchangeAdapter(ABC):
         *,
         status: str,
         side: str = "none",
+        execution_type: str = "none",
         requested_usdt: Decimal | None = None,
         filled_usdt: Decimal = Decimal("0"),
         avg_price_twd: Decimal | None = None,
-        fee_twd: Decimal | None = None,
         invoice_status: str = "not_applicable",
         message: str,
         live: bool,
@@ -50,10 +50,10 @@ class ExchangeAdapter(ABC):
             exchange_name=self.name,
             status=status,  # type: ignore[arg-type]
             side=side,  # type: ignore[arg-type]
+            execution_type=execution_type,  # type: ignore[arg-type]
             requested_usdt=requested_usdt or self.settings.target_usdt,
             filled_usdt=filled_usdt,
             avg_price_twd=avg_price_twd,
-            fee_twd=fee_twd,
             invoice_status=invoice_status,  # type: ignore[arg-type]
             message=message,
             mode="live" if live else "dry_run",

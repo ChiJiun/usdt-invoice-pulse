@@ -9,7 +9,6 @@ import zlib
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from typing import Any
 
-from bot.models import estimated_invoice_status
 from bot.trading import choose_trade_side, effective_target, quantity_step
 
 from .base import ExchangeAdapter
@@ -24,7 +23,7 @@ class BitoProAdapter(ExchangeAdapter):
     minimum_usdt = Decimal("1")
     minimum_twd: Decimal | None = None
     planned_usdt = Decimal("1")
-    invoice_rule = "依每日成交手續費彙總；未滿一元可能為零元發票"
+    invoice_rule = "有成交即列為待確認；是否開立與金額以實際電子發票為準"
     base_url = "https://api.bitopro.com/v3"
     pair = "usdt_twd"
 
@@ -74,10 +73,6 @@ class BitoProAdapter(ExchangeAdapter):
         amount_precision = int(pair_info["amountPrecision"])
         maintain = bool(pair_info.get("maintain", False))
         return bid, ask, minimum, amount_precision, maintain
-
-    def _estimate(self, price: Decimal, amount: Decimal) -> tuple[Decimal, str]:
-        fee = price * amount * self.settings.bitopro_taker_fee_rate
-        return fee, estimated_invoice_status(fee)
 
     def _validate_credentials(self) -> None:
         missing = [
@@ -137,16 +132,15 @@ class BitoProAdapter(ExchangeAdapter):
                 live=live,
             )
 
-        fee, invoice_status = self._estimate(ask, target)
         if not live:
             return self.base_result(
                 status="simulated",
                 side="buy",
+                execution_type="spot",
                 requested_usdt=target,
                 filled_usdt=target,
                 avg_price_twd=ask,
-                fee_twd=fee,
-                invoice_status=invoice_status,
+                invoice_status="not_applicable",
                 message="已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
                 live=False,
             )
@@ -187,21 +181,16 @@ class BitoProAdapter(ExchangeAdapter):
                     headers=self._read_headers(),
                 )
             avg_price = Decimal(detail.get("avgExecutionPrice", "0")) or ask
-            raw_fee = Decimal(detail.get("fee", "0"))
-            fee_symbol = str(detail.get("feeSymbol", "")).lower()
-            actual_fee_twd = raw_fee if fee_symbol == "twd" else raw_fee * avg_price
-            if actual_fee_twd == 0 and executed > 0:
-                actual_fee_twd, _ = self._estimate(avg_price, executed)
             status = "filled" if executed >= target else "partial" if executed > 0 else "failed"
             return self.base_result(
                 status=status,
                 side=side,
+                execution_type="spot",
                 requested_usdt=target,
                 filled_usdt=executed,
                 avg_price_twd=avg_price if executed else None,
-                fee_twd=actual_fee_twd if executed else None,
                 invoice_status=(
-                    estimated_invoice_status(actual_fee_twd)
+                    "pending_confirmation"
                     if executed
                     else "not_applicable"
                 ),
@@ -284,12 +273,6 @@ class BitoProAdapter(ExchangeAdapter):
             )
 
         avg_price = Decimal(detail.get("avgExecutionPrice", "0")) or ask
-        raw_fee = Decimal(detail.get("fee", "0"))
-        fee_symbol = str(detail.get("feeSymbol", "")).lower()
-        actual_fee_twd = raw_fee if fee_symbol == "twd" else raw_fee * avg_price
-        if actual_fee_twd == 0 and executed > 0:
-            actual_fee_twd, _ = self._estimate(avg_price, executed)
-
         if executed >= target:
             status = "filled"
             message = "訂單已全數成交；等待電子發票開立通知"
@@ -304,12 +287,12 @@ class BitoProAdapter(ExchangeAdapter):
         return self.base_result(
             status=status,
             side=side,
+            execution_type="spot",
             requested_usdt=target,
             filled_usdt=executed,
             avg_price_twd=avg_price if executed else None,
-            fee_twd=actual_fee_twd if executed else None,
             invoice_status=(
-                estimated_invoice_status(actual_fee_twd)
+                "pending_confirmation"
                 if executed
                 else "not_applicable"
             ),
@@ -328,8 +311,9 @@ class BitoProAdapter(ExchangeAdapter):
             "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": None,
             "planned_usdt": str(self.planned_usdt),
+            "convert_supported": False,
             "target_eligible": self.planned_usdt >= self.minimum_usdt,
             "invoice_rule": self.invoice_rule,
             "today_status": today_status,
-            "note": "只做 USDT/TWD；TWD 足夠時買入，否則在 USDT 足夠時賣出。",
+            "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。",
         }

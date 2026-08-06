@@ -9,7 +9,7 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from bot.models import estimated_invoice_status
+from bot.http import ApiError
 from bot.trading import choose_trade_side, effective_target, quantity_step
 
 from .base import ExchangeAdapter
@@ -24,7 +24,7 @@ class MaxAdapter(ExchangeAdapter):
     minimum_usdt = Decimal("8")
     minimum_twd = Decimal("250")
     planned_usdt = Decimal("8")
-    invoice_rule = "依每日實收交易手續費彙總，四捨五入滿一元才開立"
+    invoice_rule = "現貨或閃兌有成交即列為待確認；以實際電子發票為準"
     base_url = "https://max-api.maicoin.com"
     market = "usdttwd"
 
@@ -104,6 +104,146 @@ class MaxAdapter(ExchangeAdapter):
             Decimal("0"),
         )
 
+    def _find_today_convert(self) -> dict[str, Any] | None:
+        path = "/api/v3/converts"
+        params = {
+            "nonce": int(time.time() * 1000),
+            "order": "desc",
+            "limit": 50,
+        }
+        history = self.http.request_json(
+            "GET",
+            f"{self.base_url}{path}",
+            params=params,
+            headers=self._auth_headers(params, path),
+        )
+        if not isinstance(history, list):
+            raise RuntimeError("MAX 閃兌紀錄回應格式不符預期")
+        start_of_day = self.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        start_timestamp = int(start_of_day.timestamp())
+        for order in history:
+            currencies = {
+                str(order.get("from_currency", "")).lower(),
+                str(order.get("to_currency", "")).lower(),
+            }
+            if (
+                currencies == {"twd", "usdt"}
+                and int(order.get("created_at", 0)) >= start_timestamp
+            ):
+                return order
+        return None
+
+    def _convert_result(self, order: dict[str, Any], *, message: str):
+        from_currency = str(order.get("from_currency", "")).lower()
+        to_currency = str(order.get("to_currency", "")).lower()
+        from_amount = Decimal(str(order.get("from_amount", "0")))
+        to_amount = Decimal(str(order.get("to_amount", "0")))
+        if from_currency == "twd" and to_currency == "usdt":
+            side = "buy"
+            filled_usdt = to_amount
+            avg_price = from_amount / to_amount if to_amount > 0 else None
+        elif from_currency == "usdt" and to_currency == "twd":
+            side = "sell"
+            filled_usdt = from_amount
+            avg_price = to_amount / from_amount if from_amount > 0 else None
+        else:
+            raise RuntimeError("MAX 閃兌結果不是 USDT/TWD")
+
+        serial = str(order.get("sn", ""))
+        return self.base_result(
+            status="filled" if filled_usdt > 0 else "failed",
+            side=side,
+            execution_type="convert",
+            requested_usdt=filled_usdt or self.settings.max_convert_usdt_amount,
+            filled_usdt=filled_usdt,
+            avg_price_twd=avg_price,
+            invoice_status=(
+                "pending_confirmation" if filled_usdt > 0 else "not_applicable"
+            ),
+            message=message,
+            live=True,
+            reference_hash=(
+                hashlib.sha256(serial.encode()).hexdigest()[:10] if serial else None
+            ),
+        )
+
+    def _run_convert_fallback(
+        self,
+        balances: list[dict[str, Any]],
+        *,
+        target: Decimal,
+        reference_price: Decimal,
+    ):
+        if not self.settings.max_convert_enabled:
+            return self.base_result(
+                status="skipped",
+                requested_usdt=target,
+                message="現貨資金不足，MAX 閃兌 fallback 未啟用；本日略過",
+                live=True,
+            )
+
+        existing = self._find_today_convert()
+        if existing:
+            return self._convert_result(
+                existing,
+                message="偵測到今日既有 USDT/TWD 閃兌，已沿用成交並阻止重複交易",
+            )
+
+        available_twd = self._available_balance(balances, "twd")
+        available_usdt = self._available_balance(balances, "usdt")
+        sellable_usdt = max(
+            available_usdt - self.settings.usdt_reserve, Decimal("0")
+        )
+        if available_twd > 0:
+            from_currency = "twd"
+            to_currency = "usdt"
+            amount = min(available_twd, self.settings.max_convert_twd_amount)
+        elif sellable_usdt > 0:
+            from_currency = "usdt"
+            to_currency = "twd"
+            amount = min(sellable_usdt, self.settings.max_convert_usdt_amount)
+        else:
+            return self.base_result(
+                status="skipped",
+                requested_usdt=target,
+                message="現貨與閃兌都沒有可用的 TWD／USDT；本日略過",
+                live=True,
+            )
+
+        path = "/api/v3/convert"
+        body = {
+            "nonce": int(time.time() * 1000),
+            "from_currency": from_currency,
+            "to_currency": to_currency,
+            "from_amount": str(amount),
+        }
+        try:
+            order = self.http.request_json(
+                "POST",
+                f"{self.base_url}{path}",
+                body=body,
+                headers=self._auth_headers(body, path),
+            )
+        except ApiError as exc:
+            return self.base_result(
+                status="failed",
+                side="buy" if from_currency == "twd" else "sell",
+                execution_type="convert",
+                requested_usdt=(
+                    amount / reference_price
+                    if from_currency == "twd"
+                    else amount
+                ),
+                message=f"現貨資金不足，MAX 低額閃兌嘗試未成功：{exc}",
+                live=True,
+            )
+        if not isinstance(order, dict):
+            raise RuntimeError("MAX 閃兌回應格式不符預期")
+        return self._convert_result(
+            order,
+            message="現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
+        )
+
     def run(self, *, live: bool):
         bid, ask, minimum_base, minimum_quote, base_precision, market_status = (
             self._snapshot()
@@ -125,17 +265,16 @@ class MaxAdapter(ExchangeAdapter):
                 live=live,
             )
 
-        fee = target * ask * self.settings.max_taker_fee_rate
         if not live:
             return self.base_result(
                 status="simulated",
                 side="buy",
+                execution_type="spot",
                 requested_usdt=target,
                 filled_usdt=target,
                 avg_price_twd=ask,
-                fee_twd=fee,
-                invoice_status=estimated_invoice_status(fee),
-                message="已自動提高至 MAX 最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
+                invoice_status="not_applicable",
+                message="已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
                 live=False,
             )
 
@@ -154,11 +293,10 @@ class MaxAdapter(ExchangeAdapter):
             usdt_reserve=self.settings.usdt_reserve,
         )
         if decision.side == "none":
-            return self.base_result(
-                status="skipped",
-                requested_usdt=target,
-                message="TWD 不足以買入，扣除保留量後的 USDT 也不足以賣出；本日略過",
-                live=True,
+            return self._run_convert_fallback(
+                balances,
+                target=target,
+                reference_price=ask,
             )
 
         side = decision.side
@@ -194,7 +332,6 @@ class MaxAdapter(ExchangeAdapter):
 
         executed = Decimal(detail.get("executed_volume", "0"))
         avg_price = Decimal(detail.get("avg_price", "0")) or ask
-        estimated_fee = executed * avg_price * self.settings.max_taker_fee_rate
         status = "filled" if executed >= target else "partial" if executed > 0 else "failed"
         message = (
             "訂單已全數成交；等待電子發票開立通知"
@@ -204,12 +341,12 @@ class MaxAdapter(ExchangeAdapter):
         return self.base_result(
             status=status,
             side=side,
+            execution_type="spot",
             requested_usdt=target,
             filled_usdt=executed,
             avg_price_twd=avg_price if executed else None,
-            fee_twd=estimated_fee if executed else None,
             invoice_status=(
-                estimated_invoice_status(estimated_fee)
+                "pending_confirmation"
                 if executed
                 else "not_applicable"
             ),
@@ -228,6 +365,7 @@ class MaxAdapter(ExchangeAdapter):
             "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": str(self.minimum_twd),
             "planned_usdt": str(self.planned_usdt),
+            "convert_supported": True,
             "target_eligible": (
                 self.planned_usdt >= self.minimum_usdt
                 and self.planned_usdt > Decimal("0")
@@ -237,6 +375,6 @@ class MaxAdapter(ExchangeAdapter):
             "note": (
                 "只做 USDT/TWD；目前最低 "
                 f"{self.minimum_usdt.normalize():f} USDT／"
-                f"新台幣 {self.minimum_twd.normalize():f} 元，程式會自動提高計畫量。"
+                f"新台幣 {self.minimum_twd.normalize():f} 元；現貨資金不足時可改試低額閃兌。"
             ),
         }
