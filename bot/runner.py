@@ -51,6 +51,7 @@ def already_executed(state: dict[str, Any], date: str, exchange: str) -> bool:
 def make_duplicate_result(adapter: Any, live: bool) -> RunResult:
     return adapter.base_result(
         status="skipped",
+        requested_usdt=adapter.planned_usdt,
         message="今日已有正式成交紀錄，重複防護已略過本次執行",
         live=live,
     )
@@ -103,6 +104,7 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
         if live and result.status in {"filled", "partial"}:
             state.setdefault("live_runs", {}).setdefault(today, {})[adapter.id] = {
                 "status": result.status,
+                "side": result.side,
                 "filled_usdt": decimal_text(result.filled_usdt),
                 "reference_hash": result.reference_hash,
             }
@@ -141,7 +143,7 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
         (Decimal(str(event.get("filled_usdt", "0"))) for event in filled_events),
         Decimal("0"),
     )
-    total_spend = sum(
+    total_notional = sum(
         (
             Decimal(str(event.get("filled_usdt", "0")))
             * Decimal(str(event.get("avg_price_twd") or "0"))
@@ -174,7 +176,7 @@ def run_all(settings: Settings, *, live: bool) -> dict[str, Any]:
                 if event.get("invoice_status") == "estimated_eligible"
             ),
             "total_filled_usdt": decimal_text(total_filled),
-            "total_spend_twd": decimal_text(total_spend),
+            "total_notional_twd": decimal_text(total_notional),
         },
         "exchanges": exchange_statuses,
         "events": events,

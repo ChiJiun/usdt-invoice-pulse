@@ -7,17 +7,20 @@ import unittest
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
 from bot.exchanges.max_exchange import MaxAdapter
 from bot.models import estimated_invoice_status
+from bot.trading import choose_trade_side, effective_target
 
 
 def settings(target: str = "1") -> Settings:
     root = Path(tempfile.gettempdir()) / "usdt-invoice-pulse-tests"
     return Settings(
         target_usdt=Decimal(target),
+        usdt_reserve=Decimal("0"),
         live_trading=False,
         live_confirmation="",
         bitopro_enabled=True,
@@ -37,33 +40,83 @@ def settings(target: str = "1") -> Settings:
 
 
 class FakeHttp:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        bitopro_twd: str = "1000",
+        bitopro_usdt: str = "100",
+        max_twd: str = "1000",
+        max_usdt: str = "100",
+    ):
         self.calls = []
+        self.bitopro_twd = bitopro_twd
+        self.bitopro_usdt = bitopro_usdt
+        self.max_twd = max_twd
+        self.max_usdt = max_usdt
+        self.last_body = None
 
     def request_json(self, method, url, **kwargs):
         self.calls.append((method, url))
         if "order-book" in url:
-            return {"asks": [{"price": "32.265", "amount": "100"}], "bids": []}
-        if "limitations-and-fees" in url:
             return {
-                "orderFeesAndLimitations": [
-                    {"pair": "USDT/TWD", "minimumOrderAmount": "1"}
+                "asks": [{"price": "32.265", "amount": "100"}],
+                "bids": [{"price": "32.250", "amount": "100"}],
+            }
+        if "provisioning/trading-pairs" in url:
+            return {
+                "data": [
+                    {
+                        "pair": "usdt_twd",
+                        "minLimitBaseAmount": "1",
+                        "amountPrecision": "4",
+                        "maintain": False,
+                    }
                 ]
             }
         if url.endswith("/api/v3/markets"):
             return [
                 {
                     "id": "usdttwd",
-                    "min_base_amount": 8,
-                    "min_quote_amount": 250,
+                    "status": "active",
+                    "base_unit_precision": 2,
+                    "min_base_amount": "8",
+                    "min_quote_amount": "250",
                 }
             ]
         if "/api/v3/ticker" in url:
-            return {"sell": "32.263"}
+            return {"buy": "32.250", "sell": "32.263"}
         if url.endswith("/accounts/balance"):
-            return {"data": [{"currency": "twd", "available": "100"}]}
-        if url.endswith("/api/v3/info"):
-            return {"email": "masked@example.invalid"}
+            return {
+                "data": [
+                    {"currency": "twd", "available": self.bitopro_twd},
+                    {"currency": "usdt", "available": self.bitopro_usdt},
+                ]
+            }
+        if url.endswith("/api/v3/wallet/spot/accounts"):
+            return [
+                {"currency": "twd", "balance": self.max_twd},
+                {"currency": "usdt", "balance": self.max_usdt},
+            ]
+        if "/orders/all/usdt_twd" in url:
+            return {"data": []}
+        if method == "POST" and url.endswith("/orders/usdt_twd"):
+            self.last_body = kwargs["body"]
+            return {"orderId": "bito-order-1"}
+        if method == "GET" and url.endswith("/orders/usdt_twd/bito-order-1"):
+            return {
+                "executedAmount": self.last_body["amount"],
+                "remainingAmount": "0",
+                "avgExecutionPrice": self.last_body["price"],
+                "fee": "0",
+                "feeSymbol": "twd",
+            }
+        if method == "POST" and url.endswith("/api/v3/wallet/spot/order"):
+            self.last_body = kwargs["body"]
+            return {
+                "state": "done",
+                "executed_volume": self.last_body["volume"],
+                "avg_price": "32.263",
+            }
         raise AssertionError(f"Unexpected request: {method} {url}")
 
 
@@ -97,13 +150,94 @@ class RuleTests(unittest.TestCase):
     def test_bitopro_one_usdt_is_simulated(self):
         result = BitoProAdapter(settings(), FakeHttp()).run(live=False)
         self.assertEqual(result.status, "simulated")
+        self.assertEqual(result.side, "buy")
+        self.assertEqual(result.requested_usdt, Decimal("1"))
         self.assertEqual(result.filled_usdt, Decimal("1"))
         self.assertEqual(result.invoice_status, "estimated_zero")
 
-    def test_max_one_usdt_is_skipped(self):
+    def test_max_one_usdt_floor_is_raised_to_eight(self):
         result = MaxAdapter(settings(), FakeHttp()).run(live=False)
+        self.assertEqual(result.status, "simulated")
+        self.assertEqual(result.side, "buy")
+        self.assertEqual(result.requested_usdt, Decimal("8"))
+        self.assertEqual(result.filled_usdt, Decimal("8"))
+
+    def test_quote_minimum_can_raise_target_above_base_minimum(self):
+        target = effective_target(
+            Decimal("1"),
+            Decimal("8"),
+            Decimal("250"),
+            Decimal("30"),
+            Decimal("0.01"),
+        )
+        self.assertEqual(target, Decimal("8.34"))
+
+    def test_balance_decision_prefers_buy_then_falls_back_to_sell(self):
+        buy = choose_trade_side(
+            available_twd=Decimal("1000"),
+            available_usdt=Decimal("100"),
+            target_usdt=Decimal("8"),
+            buy_price_twd=Decimal("32"),
+            buy_buffer_rate=Decimal("0.01"),
+            usdt_reserve=Decimal("0"),
+        )
+        sell = choose_trade_side(
+            available_twd=Decimal("0"),
+            available_usdt=Decimal("8"),
+            target_usdt=Decimal("8"),
+            buy_price_twd=Decimal("32"),
+            buy_buffer_rate=Decimal("0.01"),
+            usdt_reserve=Decimal("0"),
+        )
+        skipped = choose_trade_side(
+            available_twd=Decimal("0"),
+            available_usdt=Decimal("8"),
+            target_usdt=Decimal("8"),
+            buy_price_twd=Decimal("32"),
+            buy_buffer_rate=Decimal("0.01"),
+            usdt_reserve=Decimal("1"),
+        )
+        self.assertEqual(buy.side, "buy")
+        self.assertEqual(sell.side, "sell")
+        self.assertEqual(skipped.side, "none")
+
+    def test_bitopro_live_falls_back_to_sell(self):
+        configured = replace(
+            settings(),
+            bitopro_email="member@example.invalid",
+            bitopro_api_key="key",
+            bitopro_api_secret="secret",
+        )
+        http = FakeHttp(bitopro_twd="0", bitopro_usdt="1")
+        with patch("bot.exchanges.bitopro.time.sleep", return_value=None):
+            result = BitoProAdapter(configured, http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.side, "sell")
+        self.assertEqual(http.last_body["action"], "SELL")
+
+    def test_max_live_prefers_buy_and_uses_eight_usdt(self):
+        configured = replace(settings(), max_api_key="key", max_api_secret="secret")
+        http = FakeHttp(max_twd="1000", max_usdt="100")
+        result = MaxAdapter(configured, http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.side, "buy")
+        self.assertEqual(http.last_body["volume"], "8")
+
+    def test_max_live_falls_back_to_sell(self):
+        configured = replace(settings(), max_api_key="key", max_api_secret="secret")
+        http = FakeHttp(max_twd="0", max_usdt="8")
+        result = MaxAdapter(configured, http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertEqual(result.side, "sell")
+        self.assertEqual(http.last_body["side"], "sell")
+
+    def test_insufficient_balances_are_skipped_without_order(self):
+        configured = replace(settings(), max_api_key="key", max_api_secret="secret")
+        http = FakeHttp(max_twd="0", max_usdt="7.99")
+        result = MaxAdapter(configured, http).run(live=True)
         self.assertEqual(result.status, "skipped")
-        self.assertIn("8 USDT", result.message)
+        self.assertEqual(result.side, "none")
+        self.assertNotIn("POST", [method for method, _ in http.calls])
 
     def test_bitopro_credential_check_is_read_only(self):
         configured = replace(
@@ -122,7 +256,10 @@ class RuleTests(unittest.TestCase):
         )
         http = FakeHttp()
         MaxAdapter(configured, http).verify_credentials()
-        self.assertEqual(http.calls, [("GET", "https://max-api.maicoin.com/api/v3/info")])
+        self.assertEqual(
+            http.calls,
+            [("GET", "https://max-api.maicoin.com/api/v3/wallet/spot/accounts")],
+        )
 
 
 class DashboardPolicyTests(unittest.TestCase):
@@ -142,6 +279,9 @@ class DashboardPolicyTests(unittest.TestCase):
             for event in dashboard["events"]
         ]
         self.assertEqual(len(event_scopes), len(set(event_scopes)))
+        max_event = next(event for event in dashboard["events"] if event["exchange"] == "max")
+        self.assertEqual(Decimal(max_event["requested_usdt"]), Decimal("8"))
+        self.assertIn(max_event["side"], {"buy", "sell", "none"})
 
 
 if __name__ == "__main__":

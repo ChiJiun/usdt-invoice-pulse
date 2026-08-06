@@ -24,9 +24,21 @@ def env_decimal(name: str, default: str) -> Decimal:
     return value
 
 
+def env_nonnegative_decimal(name: str, default: str) -> Decimal:
+    raw = os.getenv(name, default)
+    try:
+        value = Decimal(raw)
+    except InvalidOperation as exc:
+        raise ValueError(f"{name} 必須是數字") from exc
+    if value < 0:
+        raise ValueError(f"{name} 不可小於 0")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     target_usdt: Decimal
+    usdt_reserve: Decimal
     live_trading: bool
     live_confirmation: str
     bitopro_enabled: bool
@@ -47,6 +59,7 @@ class Settings:
     def from_env(cls) -> "Settings":
         return cls(
             target_usdt=env_decimal("ORDER_USDT", "1"),
+            usdt_reserve=env_nonnegative_decimal("USDT_RESERVE", "0"),
             live_trading=env_bool("LIVE_TRADING", False),
             live_confirmation=os.getenv("CONFIRM_LIVE_TRADING", ""),
             bitopro_enabled=env_bool("BITOPRO_ENABLED", True),

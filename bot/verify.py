@@ -22,22 +22,7 @@ def main() -> int:
     if settings.bitopro_enabled:
         checks.append(("BitoPro", BitoProAdapter(settings)))
     if settings.max_enabled:
-        max_adapter = MaxAdapter(settings)
-        try:
-            ask, minimum_base, minimum_quote = max_adapter._snapshot()
-        except Exception as exc:
-            print(f"MAX：公開門檻查詢失敗 — {safe_error(exc)}", file=sys.stderr)
-            return 1
-        if (
-            settings.target_usdt >= minimum_base
-            and settings.target_usdt * ask >= minimum_quote
-        ):
-            checks.append(("MAX", max_adapter))
-        else:
-            print(
-                f"MAX：目標低於 {minimum_base} USDT／NT$ {minimum_quote} 門檻，"
-                "未要求私有 API 憑證"
-            )
+        checks.append(("MAX", MaxAdapter(settings)))
 
     if not checks:
         print("沒有啟用可驗證的交易所；未送出任何訂單。")

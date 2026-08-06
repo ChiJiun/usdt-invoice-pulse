@@ -1,4 +1,4 @@
-name: Daily purchase and dashboard
+name: Daily USDT trade and dashboard
 
 on:
   push:
@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ORDER_USDT: ${{ vars.ORDER_USDT || '1' }}
+      USDT_RESERVE: ${{ vars.USDT_RESERVE || '0' }}
       LIVE_TRADING: ${{ vars.LIVE_TRADING || 'false' }}
       CONFIRM_LIVE_TRADING: ${{ secrets.CONFIRM_LIVE_TRADING }}
       BITOPRO_ENABLED: ${{ vars.BITOPRO_ENABLED || 'true' }}
@@ -53,7 +54,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Test purchase safeguards
+      - name: Test trading safeguards
         run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Run selected automation mode
@@ -81,7 +82,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add public/data/dashboard.json data/state.json
-          git commit -m "chore: update daily purchase dashboard"
+          git commit -m "chore: update daily trading dashboard"
           git push
 
       - name: Set up Node.js 22

@@ -1,15 +1,15 @@
-# 一塊日常：每日 USDT 成交與發票 Dashboard
+# 一塊日常：每日 USDT/TWD 雙向交易與發票 Dashboard
 
-這是一個以安全為預設的 GitHub Actions 自動化專案。它每天檢查 BitoPro 與 MAX 的官方門檻，符合規則時才允許下單，並把去識別化結果發布到 GitHub Pages。
+這是一個以安全為預設的 GitHub Actions 自動化專案。它每天讀取 BitoPro 與 MAX 的官方門檻，把設定量自動提高到各平台可成交的最低量，再依可用餘額決定買入、賣出或略過，最後把去識別化結果發布到 GitHub Pages。
 
 > 重要：Dashboard 只納入具有官方私人下單 API、可由程式安全執行的交易所。沒有官方下單 API 的平台不會執行，也不會顯示。
 
 ## 2026-08 可行性
 
-| 交易所 | 1 USDT | 官方 API | 發票現實 |
+| 交易所 | `ORDER_USDT=1` 時的計畫量 | 官方 API | 發票現實 |
 | --- | --- | --- | --- |
-| BitoPro | 可用限價單 | 有 | 發票依每日手續費彙總；1 USDT 手續費通常未滿 1 元，可能是零元發票 |
-| MAX | 不可，最低 8 USDT 且須達 NT$250 | 有 | 依每日實收手續費彙總，四捨五入滿 1 元才開立 |
+| BitoPro | 1 USDT 限價單 | 有，支援 BUY／SELL 與餘額查詢 | 發票依每日手續費彙總；小額交易可能是零元發票 |
+| MAX | **8 USDT 市價單**；若 8 USDT 未達 NT$250，會再向上調整 | 有，支援 buy／sell 與現貨餘額查詢 | 依每日實收手續費彙總，四捨五入滿 1 元才開立 |
 
 交易所可能隨時調整費率、限額與 API。BitoPro 與 MAX 的門檻會在每次執行時重新從官方公開 API 讀取。MaiCoin、HOYA BIT、XREX、ZONE Wallet、TWEX、Chainss／Atrix、KryptoGO 等未提供一般會員官方私人下單 API 的平台均排除，不使用帳密、瀏覽器模擬登入或未公開端點。
 
@@ -18,7 +18,7 @@
 - 預設 `dry-run`，新部署不會下真實訂單。
 - `validate` 模式只呼叫帳戶讀取 API，可在不下單的情況下先驗證 Key、Secret 與簽章。
 - 真實下單需同時設定 `LIVE_TRADING=true` 與固定確認鎖。
-- 每家交易所每天至多一筆正式成交；重跑 Actions 不會重複購買。
+- 每家交易所每天至多一筆正式成交；重跑 Actions 不會重複交易。
 - BitoPro 使用限價吃單並限制滑價；未成交餘額會送出取消。
 - API Key 只存 GitHub Secrets，請只授予「讀取＋現貨交易」，**不要授予提領權限**。
 - Pages 只發布金額、狀態與原因，不發布 Email、API Key、完整訂單 ID 或完整發票號碼。
@@ -41,18 +41,50 @@ npm run dev
 npm test
 ```
 
-## 目前版本的交易限制
+## 交易邏輯
 
-部署前請先理解目前程式實際會做的事情：
+程式只處理 `USDT/TWD`，不會碰其他幣種或交易對。`ORDER_USDT` 是「希望至少交易多少 USDT」，不是所有交易所都固定成交同一數量，也不是 1 USDT 上限。
 
-- 只處理 `USDT/TWD`。
-- 目前只會**買入** USDT，尚未實作每日買賣輪替。
-- 下單目標使用 `ORDER_USDT`，是固定 USDT 數量，不是固定 TWD 金額。
-- 同一個 `ORDER_USDT` 會套用到所有啟用的交易所。
-- `ORDER_USDT=1` 時 BitoPro 可模擬或下單，MAX 因低於官方最低 8 USDT／NT$250 而自動略過。
-- 成交只代表預估會產生手續費；交易 API 不會回傳真正的電子發票號碼。
+每次執行會對每家交易所各自完成下列流程：
 
-因此，新部署建議先使用 `ORDER_USDT=1`、`MAX_ENABLED=false` 驗證 BitoPro。要測試 MAX 時，先停用 BitoPro，再把 `ORDER_USDT` 調到 MAX 當下官方最低量以上。不同交易所固定 TWD 金額與買賣輪替要等下一版實作後才能安全啟用。
+```mermaid
+flowchart TD
+  A[讀取 USDT/TWD 買一、賣一與官方門檻] --> B[計畫量 = max 設定下限、最低 USDT、最低 TWD 換算量]
+  B --> C[依交易所數量精度向上取整]
+  C --> D{正式模式?}
+  D -->|否| E[模擬優先買入並更新 Dashboard]
+  D -->|是| F[讀取 TWD 與 USDT 可用餘額]
+  F --> G{TWD 足夠含滑價與費率緩衝?}
+  G -->|是| H[買入計畫量 USDT]
+  G -->|否| I{扣除 USDT_RESERVE 後仍足夠?}
+  I -->|是| J[賣出計畫量 USDT]
+  I -->|否| K[略過，不送單]
+  H --> L[輪詢成交並記錄去識別結果]
+  J --> L
+```
+
+以預設 `ORDER_USDT=1` 為例：
+
+- BitoPro 官方最低 1 USDT，計畫量為 1 USDT。
+- MAX 官方最低 8 USDT 且成交額至少 NT$250；目前價格下通常計畫量為 **8 USDT**。
+- 若 MAX 的 USDT/TWD 價格低到 `8 × 價格 < 250`，程式會依 0.01 USDT 精度再向上提高，不會送出低於 NT$250 的訂單。
+- 若把 `ORDER_USDT` 設成 12，兩家計畫量都至少是 12 USDT。
+
+方向不是每日買賣輪替，而是固定的餘額優先序：**TWD 足夠就買；TWD 不足但 USDT 足夠就賣；兩邊都不足就略過。** `USDT_RESERVE` 可保留不想被自動賣掉的 USDT，預設為 0。
+
+### 狀態與反饋
+
+| 情況 | Dashboard 狀態 | 是否送單 | 反饋 |
+| --- | --- | --- | --- |
+| dry-run | `模擬完成` | 否 | 顯示各平台自動調整後的計畫量；因不讀私人餘額，以優先買入情境估算 |
+| TWD 足夠 | `成交`／`部分成交`／`失敗` | 買單 | 顯示「買入」、實際成交量、均價、手續費估算與發票估算 |
+| TWD 不足、USDT 足夠 | `成交`／`部分成交`／`失敗` | 賣單 | 顯示「賣出」及相同成交摘要 |
+| TWD 與可出售 USDT 都不足 | `已略過` | 否 | 顯示資金不足，本日不交易；不把資金不足當程式錯誤 |
+| 交易對維護或非 active | `已略過` | 否 | 顯示市場狀態 |
+| 憑證、簽章、網路或交易所拒單 | `失敗` | 可能未送出或未成交 | 顯示去識別化錯誤；另一家交易所仍會繼續 |
+| 今日已有正式成交 | `已略過` | 否 | 每日防重複保護生效 |
+
+成交只代表預估會產生手續費；交易 API 不會回傳真正的電子發票號碼，仍須以交易所通知、Email 或手機載具確認。
 
 ## GitHub Actions 與 Pages 完整部署
 
@@ -60,7 +92,7 @@ npm test
 
 正式 Dashboard：<https://chijiun.github.io/usdt-invoice-pulse/>
 
-目前 repository 已啟用 GitHub Pages，發布來源是 `GitHub Actions`，HTTPS 已開啟。工作流程檔案是 [`.github/workflows/dashboard.yml`](.github/workflows/dashboard.yml)。PR 分支上的新版前端不會直接覆蓋正式網站，必須先合併到 `main`。
+目前 repository 已啟用 GitHub Pages，發布來源是 `GitHub Actions`，HTTPS 已開啟。工作流程檔案是 [`.github/workflows/dashboard.yml`](.github/workflows/dashboard.yml)。只有 `main` 的建置會發布正式網站；可直接推送 `main`，或使用 PR 合併到 `main`。
 
 GitHub Free 要免費使用 Pages，repository 應保持 public。Pages 與 public repository 的 Actions log 都可能被任何人查看；API 憑證只能放在 GitHub Secrets，不可寫入 README、Issue、程式碼、`public/`、`data/` 或一般 Actions Variables。
 
@@ -104,15 +136,14 @@ flowchart TD
 | `dry-run` | 否 | 否 | 第一次部署、每日安全模擬、確認最低門檻與 Dashboard |
 | `live` | 是 | 可能；必須通過所有安全鎖 | 手動首單與正式交易 |
 
-### 第一步：把 workflow 合併到 main
+### 第一步：確認 workflow 已在 main
 
-1. 開啟 repository 的 **Pull requests**。
-2. 進入待合併 PR，確認 Files changed 與本機測試結果。
-3. 將 Draft PR 標示為 **Ready for review**。
-4. 點擊 **Merge pull request**，目標分支必須是 `main`。
-5. 合併後到 **Code → `.github/workflows/dashboard.yml`**，確認 workflow 已存在於 `main`。
+1. 在本機執行 `npm test`。
+2. 將已驗證的 commit 直接推送到 `main`，或把功能分支合併到 `main`。
+3. 到 **Code → `.github/workflows/dashboard.yml`**，確認 workflow 已存在於 `main`。
+4. 到 **Actions**，確認 `Daily USDT trade and dashboard` 已出現。
 
-只有把分支推到 GitHub 不會更新正式網站。GitHub 的 **Run workflow** 按鈕也要求含有 `workflow_dispatch` 的 workflow 已存在於預設分支，因此第一次部署要先合併。
+本 repository 目前採直接推送 `main`，不需要再手動 merge。單純推送非 `main` 分支只會驗證建置，不會更新正式 Pages。
 
 ### 第二步：確認 GitHub Actions 權限
 
@@ -145,10 +176,11 @@ flowchart TD
 
 | 名稱 | 建議初始值 | 是否敏感 | 說明 |
 | --- | --- | --- | --- |
-| `ORDER_USDT` | `1` | 否 | 每個啟用平台要求買入的 USDT 數量 |
+| `ORDER_USDT` | `1` | 否 | 希望每家至少交易的 USDT；程式會依平台最低 USDT／TWD 門檻向上調整 |
+| `USDT_RESERVE` | `0` | 否 | 賣出前必須保留的 USDT；例如設 `20` 就不會動用最後 20 USDT |
 | `LIVE_TRADING` | `false` | 否 | 真實交易總開關；第一次部署必須保持 `false` |
 | `BITOPRO_ENABLED` | `true` | 否 | 載入 BitoPro adapter |
-| `MAX_ENABLED` | `true` | 否 | 顯示並檢查 MAX；1 USDT 低於門檻時會安全略過 |
+| `MAX_ENABLED` | `true` | 否 | 載入 MAX adapter；`ORDER_USDT=1` 時會自動交易 8 USDT（仍以即時門檻為準） |
 
 Variable 不是保密儲存，可能原樣顯示在 log。API Key、Secret、Email 與正式交易確認字串必須放在下一節的 **Secrets**。
 
@@ -156,20 +188,20 @@ Variable 不是保密儲存，可能原樣顯示在 log。API Key、Secret、Ema
 
 1. 確認 `LIVE_TRADING=false`。
 2. 進入 **Actions**。
-3. 左側選擇 **Daily purchase and dashboard**。
+3. 左側選擇 **Daily USDT trade and dashboard**。
 4. 點擊右側 **Run workflow**。
 5. Branch 選 `main`。
 6. `mode` 選 `dry-run`。
 7. 點擊綠色 **Run workflow**。
 8. 重新整理頁面，開啟最新一筆 run。
 9. 確認 `build` job 為綠色勾勾；展開步驟時應看到：
-   - `Test purchase safeguards`
+   - `Test trading safeguards`
    - `Run selected automation mode`
    - `Save sanitized dashboard data`
    - `Build dashboard`
    - `Upload Pages artifact`
 10. 確認 `deploy` job 也為綠色勾勾，並點擊 job 上方的 deployment URL。
-11. 打開 Dashboard，確認顯示 `安全模擬`、只有 BitoPro／MAX，且沒有真實訂單編號。
+11. 打開 Dashboard，確認顯示 `安全模擬`、BitoPro 計畫 1 USDT、MAX 計畫 8 USDT，且沒有真實訂單編號。
 
 `dry-run` 只讀取公開行情與最低下單限制，不需要交易所 API Key，也不會送出訂單。GitHub Pages 更新可能需要數分鐘；可到 **Settings → Pages** 或 workflow 的 `deploy` job 查看最新部署。
 
@@ -194,8 +226,8 @@ gh run watch --exit-status
 
 | 失敗位置／現象 | 常見原因 | 處理方式 |
 | --- | --- | --- |
-| 看不到 **Run workflow** | workflow 尚未在預設分支，或 Actions 被停用 | 先合併到 `main`，再到 Settings → Actions 啟用 |
-| `Test purchase safeguards` | Python 測試失敗 | 展開 log，先修復測試；不要啟用 live |
+| 看不到 **Run workflow** | workflow 尚未在預設分支，或 Actions 被停用 | 先確認 commit 已在 `main`，再到 Settings → Actions 啟用 |
+| `Test trading safeguards` | Python 測試失敗 | 展開 log，先修復測試；不要啟用 live |
 | `Run selected automation mode` | API 憑證、餘額、門檻或安全鎖失敗 | 依 log 的交易所與錯誤碼處理；不要把 Secret 貼到 Issue |
 | `Save sanitized dashboard data` | `GITHUB_TOKEN` 沒有 contents write、branch protection 阻擋 bot push | 檢查 Actions／branch protection；必要時讓資料更新改走 PR |
 | `Build dashboard` | npm install、TypeScript 或 Vite 建置失敗 | 展開該步驟，修復後按 **Re-run failed jobs** |
@@ -203,7 +235,7 @@ gh run watch --exit-status
 | `deploy` 顯示 skipped | 手動 run 的 Branch 不是 `main` | 改選 `main` 再執行 |
 | `Deploy GitHub Pages` 失敗 | Pages Source／權限錯誤，或 GitHub Pages 佇列超過 30 分鐘 | 先檢查 `pages: write`、`id-token: write`；workflow 會自動等待 30 分鐘，若仍失敗再查看 GitHub Status |
 | 網站 404 | 尚未完成首次 deployment、網址錯誤或部署仍在傳播 | 從 Settings → Pages 的 **Visit site** 開啟，等待數分鐘再重整 |
-| 網站仍是舊版 | PR 尚未合併、deploy 未成功或瀏覽器快取 | 確認 `main` commit 與 deployment，再強制重新整理 |
+| 網站仍是舊版 | commit 不在 `main`、deploy 未成功或瀏覽器快取 | 確認 `main` commit 與 deployment，再強制重新整理 |
 
 官方參考：[設定 GitHub Pages 發布來源](https://docs.github.com/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)、[以自訂 GitHub Actions 發布 Pages](https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)、[手動執行 workflow](https://docs.github.com/actions/how-tos/manage-workflow-runs/manually-run-a-workflow)、[GitHub Actions Variables](https://docs.github.com/actions/concepts/workflows-and-actions/variables)、[GitHub Actions Secrets](https://docs.github.com/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)。
 
@@ -217,7 +249,7 @@ gh run watch --exit-status
 4. **不要授予提領、出金或建立提領地址權限。**
 5. 保存 Email、API Key 與只顯示一次的 API Secret。
 
-官方文件：<https://github.com/bitoex/bitopro-official-api-docs>
+官方文件：<https://github.com/bitoex/bitopro-offical-api-docs>
 
 ### MAX
 
@@ -249,32 +281,35 @@ GitHub-hosted runner 使用動態共用 IP，不能提供固定 IP 白名單。�
 
 驗證前保持 `LIVE_TRADING=false`。
 
-1. 進入 **Actions → Daily purchase and dashboard → Run workflow**。
+1. 進入 **Actions → Daily USDT trade and dashboard → Run workflow**。
 2. Branch 選 `main`，`mode` 選 `validate`。
 3. BitoPro 成功時會顯示：`BitoPro：API 簽章與帳戶讀取權限正常`。
-4. MAX 只有在 `ORDER_USDT` 同時符合最低 USDT 與 TWD 門檻時才會要求私人 API 憑證；低於門檻會顯示略過。
-5. `validate` 只讀取帳戶資料，不會建立、取消或成交訂單。
+4. BitoPro 會讀取 `/accounts/balance`；MAX 會讀取 `/api/v3/wallet/spot/accounts`。
+5. `ORDER_USDT=1` 不會跳過 MAX 驗證，因正式交易時計畫量會自動提高到 8 USDT。
+6. `validate` 只讀取帳戶資料，不會建立、取消或成交訂單。
 
 若要單獨驗證 MAX：
 
 1. 設定 `BITOPRO_ENABLED=false`、`MAX_ENABLED=true`。
-2. 將 `ORDER_USDT` 設為 MAX 公開 API 當下最低量以上；目前通常至少為 `8`，仍以 workflow 讀到的即時門檻為準。
+2. `ORDER_USDT` 可保持 `1`；正式計畫仍會自動提高到 MAX 當下最低量，現在通常為 `8`。
 3. 執行 `validate`。
-4. 驗證完成後，把 `LIVE_TRADING` 保持為 `false`，再決定正式數量。
+4. 驗證完成後，把 `LIVE_TRADING` 保持為 `false`，再執行一次 `dry-run` 核對計畫量。
 
 ## 首次真實下單
 
-真實下單會使用交易所資金。先確認交易方向、數量、可用餘額與 API 權限；建議一次只啟用一家。
+真實下單會使用交易所資金。先確認計畫量、TWD／USDT 可用餘額、`USDT_RESERVE` 與 API 權限；建議首單一次只啟用一家。
 
 以 BitoPro 1 USDT 首單為例：
 
 1. 設定 `ORDER_USDT=1`、`BITOPRO_ENABLED=true`、`MAX_ENABLED=false`。
-2. 確認 BitoPro TWD 可用餘額足以支付成交額、手續費及價格緩衝。
+2. 若要測試買入，確認 BitoPro TWD 可用餘額足以支付成交額、手續費及價格緩衝；若 TWD 不足且 USDT 至少有 1，程式會改為賣出。
 3. 確認 `CONFIRM_LIVE_TRADING` Secret 已正確設定。
 4. 將 `LIVE_TRADING` 改成 `true`。
 5. 進入 **Run workflow**，選擇 `live`，只執行一次。
 6. 到 BitoPro 官方訂單紀錄核對成交數量，再查看 Dashboard 的去識別化結果。
 7. 若結果與預期不同，立刻把 `LIVE_TRADING` 改回 `false`。
+
+MAX 首單可保持 `ORDER_USDT=1`，但實際會送出 8 USDT（或即時門檻要求的更高數量）。啟用 MAX 前，請先用 dry-run 看 Dashboard 的「本次計畫」，並準備足夠買入約 NT$250 以上的 TWD，或至少同等計畫量的可出售 USDT。
 
 首次正式單成功後，schedule 才會在 `LIVE_TRADING=true` 時自動呼叫正式模式。若保持 `false`，每日排程只會 dry-run。
 
@@ -295,7 +330,7 @@ GitHub-hosted runner 使用動態共用 IP，不能提供固定 IP 白名單。�
 ## 部署後檢查清單
 
 - [ ] Pages Source 是 GitHub Actions。
-- [ ] 正式程式已合併到 `main`。
+- [ ] 正式程式已推送或合併到 `main`。
 - [ ] `LIVE_TRADING=false` 完成第一次 dry-run。
 - [ ] Dashboard 只顯示 BitoPro、MAX。
 - [ ] API Key 沒有提領權限。
@@ -308,12 +343,13 @@ GitHub-hosted runner 使用動態共用 IP，不能提供固定 IP 白名單。�
 
 | 現象 | 原因與處理 |
 | --- | --- |
-| MAX 顯示略過 | `ORDER_USDT` 低於 MAX 當下最低量或成交額；這是正常安全行為 |
+| MAX 顯示 8 USDT | 正常；`ORDER_USDT=1` 是設定下限，MAX 會自動提高到官方最低 8 USDT |
+| 計畫量高於 8 USDT | MAX 的最低成交額 NT$250 換算後高於 8 USDT，或你的 `ORDER_USDT` 設得更高 |
 | `LIVE_TRADING 尚未開啟` | workflow 選了 `live`，但 variable 仍是 `false` |
 | `Unauthorized api key`／簽章失敗 | 檢查 Key、Secret、BitoPro Email、權限與 Key 是否已過期；不要把值貼到 log |
-| 餘額不足 | 補足對應交易所 TWD 餘額，或保持 `LIVE_TRADING=false` |
+| 餘額不足而略過 | 可補 TWD 讓程式買入、補足 USDT 讓程式賣出，或調低 `USDT_RESERVE`；不會自動改做其他交易對 |
 | 今日已有正式成交 | 每日防重複機制生效，不會再次下單 |
-| Pages 404 | 確認 PR 已合併至 `main`、Pages Source 正確、`deploy` job 成功 |
+| Pages 404 | 確認 commit 已在 `main`、Pages Source 正確、`deploy` job 成功 |
 | 排程沒有執行 | 到 Actions 檢查 workflow 是否被停用；也可手動執行 `dry-run` |
 
 ## 發票狀態的限制

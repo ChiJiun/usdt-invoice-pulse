@@ -25,6 +25,7 @@ class ExchangeAdapter(ABC):
     def __init__(self, settings: Settings, http: HttpClient | None = None) -> None:
         self.settings = settings
         self.http = http or HttpClient()
+        self.planned_usdt = max(settings.target_usdt, self.minimum_usdt)
 
     def now(self) -> datetime:
         return datetime.now(TAIPEI)
@@ -33,6 +34,8 @@ class ExchangeAdapter(ABC):
         self,
         *,
         status: str,
+        side: str = "none",
+        requested_usdt: Decimal | None = None,
         filled_usdt: Decimal = Decimal("0"),
         avg_price_twd: Decimal | None = None,
         fee_twd: Decimal | None = None,
@@ -46,7 +49,8 @@ class ExchangeAdapter(ABC):
             exchange=self.id,
             exchange_name=self.name,
             status=status,  # type: ignore[arg-type]
-            requested_usdt=self.settings.target_usdt,
+            side=side,  # type: ignore[arg-type]
+            requested_usdt=requested_usdt or self.settings.target_usdt,
             filled_usdt=filled_usdt,
             avg_price_twd=avg_price_twd,
             fee_twd=fee_twd,
@@ -65,4 +69,3 @@ class ExchangeAdapter(ABC):
     @abstractmethod
     def public_status(self, today_status: str = "waiting") -> dict[str, object]:
         raise NotImplementedError
-

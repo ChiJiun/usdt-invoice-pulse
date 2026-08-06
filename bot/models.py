@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Literal
 
+from bot.trading import TradeSide
+
 
 RunStatus = Literal["simulated", "filled", "partial", "skipped", "failed"]
 InvoiceStatus = Literal[
@@ -35,6 +37,7 @@ class RunResult:
     exchange: str
     exchange_name: str
     status: RunStatus
+    side: TradeSide
     requested_usdt: Decimal
     filled_usdt: Decimal
     avg_price_twd: Decimal | None
@@ -54,4 +57,3 @@ class RunResult:
         for field in ("requested_usdt", "filled_usdt", "avg_price_twd", "fee_twd"):
             payload[field] = decimal_text(payload[field])  # type: ignore[arg-type]
         return payload
-

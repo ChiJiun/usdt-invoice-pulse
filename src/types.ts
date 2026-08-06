@@ -5,6 +5,8 @@ export type RunStatus =
   | "skipped"
   | "failed";
 
+export type TradeSide = "buy" | "sell" | "none";
+
 export type InvoiceStatus =
   | "estimated_zero"
   | "estimated_eligible"
@@ -19,6 +21,8 @@ export interface ExchangeStatus {
   accent: string;
   api_status: "available";
   minimum_usdt: string;
+  minimum_twd: string | null;
+  planned_usdt: string;
   target_eligible: boolean;
   invoice_rule: string;
   today_status: RunStatus | "waiting";
@@ -32,6 +36,7 @@ export interface RunEvent {
   exchange: string;
   exchange_name: string;
   status: RunStatus;
+  side: TradeSide;
   requested_usdt: string;
   filled_usdt: string;
   avg_price_twd: string | null;
@@ -64,7 +69,7 @@ export interface DashboardData {
     confirmed_invoices: number;
     eligible_invoice_estimates: number;
     total_filled_usdt: string;
-    total_spend_twd: string;
+    total_notional_twd: string;
   };
   exchanges: ExchangeStatus[];
   events: RunEvent[];

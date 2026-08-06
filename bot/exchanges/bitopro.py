@@ -6,10 +6,11 @@ import hmac
 import json
 import time
 import zlib
-from decimal import Decimal, ROUND_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from typing import Any
 
 from bot.models import estimated_invoice_status
+from bot.trading import choose_trade_side, effective_target, quantity_step
 
 from .base import ExchangeAdapter
 
@@ -21,6 +22,8 @@ class BitoProAdapter(ExchangeAdapter):
     accent = "#2f6bff"
     api_status = "available"
     minimum_usdt = Decimal("1")
+    minimum_twd: Decimal | None = None
+    planned_usdt = Decimal("1")
     invoice_rule = "依每日成交手續費彙總；未滿一元可能為零元發票"
     base_url = "https://api.bitopro.com/v3"
     pair = "usdt_twd"
@@ -57,21 +60,20 @@ class BitoProAdapter(ExchangeAdapter):
             ),
         }
 
-    def _market_snapshot(self) -> tuple[Decimal, Decimal]:
+    def _market_snapshot(self) -> tuple[Decimal, Decimal, Decimal, int, bool]:
         order_book = self.http.request_json(
             "GET", f"{self.base_url}/order-book/{self.pair}", params={"limit": 1}
         )
+        bid = Decimal(order_book["bids"][0]["price"])
         ask = Decimal(order_book["asks"][0]["price"])
-        limits = self.http.request_json(
-            "GET", f"{self.base_url}/provisioning/limitations-and-fees"
+        pairs = self.http.request_json(
+            "GET", f"{self.base_url}/provisioning/trading-pairs"
         )
-        pair_limit = next(
-            row
-            for row in limits["orderFeesAndLimitations"]
-            if row["pair"].upper() == "USDT/TWD"
-        )
-        minimum = Decimal(pair_limit["minimumOrderAmount"])
-        return ask, minimum
+        pair_info = next(row for row in pairs["data"] if row["pair"] == self.pair)
+        minimum = Decimal(pair_info["minLimitBaseAmount"])
+        amount_precision = int(pair_info["amountPrecision"])
+        maintain = bool(pair_info.get("maintain", False))
+        return bid, ask, minimum, amount_precision, maintain
 
     def _estimate(self, price: Decimal, amount: Decimal) -> tuple[Decimal, str]:
         fee = price * amount * self.settings.bitopro_taker_fee_rate
@@ -100,19 +102,38 @@ class BitoProAdapter(ExchangeAdapter):
             raise RuntimeError("BitoPro 帳戶驗證回應格式不符預期")
         return response["data"]
 
+    @staticmethod
+    def _available_balance(balances: list[dict[str, Any]], currency: str) -> Decimal:
+        return next(
+            (
+                Decimal(str(balance.get("available", "0")))
+                for balance in balances
+                if str(balance.get("currency", "")).lower() == currency
+            ),
+            Decimal("0"),
+        )
+
     def verify_credentials(self) -> None:
         """只驗證簽章與帳戶讀取權限，不送出訂單。"""
         self._validate_credentials()
         self._account_balances()
 
     def run(self, *, live: bool):
-        ask, minimum = self._market_snapshot()
+        bid, ask, minimum, amount_precision, maintain = self._market_snapshot()
         self.minimum_usdt = minimum
-        target = self.settings.target_usdt
-        if target < minimum:
+        target = effective_target(
+            self.settings.target_usdt,
+            minimum,
+            Decimal("0"),
+            bid,
+            quantity_step(amount_precision),
+        )
+        self.planned_usdt = target
+        if maintain:
             return self.base_result(
                 status="skipped",
-                message=f"官方最低下單量為 {minimum} USDT",
+                requested_usdt=target,
+                message="USDT/TWD 交易對維護中，未送出訂單",
                 live=live,
             )
 
@@ -120,11 +141,13 @@ class BitoProAdapter(ExchangeAdapter):
         if not live:
             return self.base_result(
                 status="simulated",
+                side="buy",
+                requested_usdt=target,
                 filled_usdt=target,
                 avg_price_twd=ask,
                 fee_twd=fee,
                 invoice_status=invoice_status,
-                message="符合最低門檻；模擬限價吃單，未送出真實訂單",
+                message="已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
                 live=False,
             )
 
@@ -151,6 +174,8 @@ class BitoProAdapter(ExchangeAdapter):
         ).get("data", [])
         if existing:
             detail = existing[0]
+            detail_side = str(detail.get("action", "")).lower()
+            side = detail_side if detail_side in {"buy", "sell"} else "none"
             order_id = str(detail.get("id", ""))
             executed = Decimal(detail.get("executedAmount", "0"))
             remaining = Decimal(detail.get("remainingAmount", str(target)))
@@ -170,6 +195,8 @@ class BitoProAdapter(ExchangeAdapter):
             status = "filled" if executed >= target else "partial" if executed > 0 else "failed"
             return self.base_result(
                 status=status,
+                side=side,
+                requested_usdt=target,
                 filled_usdt=executed,
                 avg_price_twd=avg_price if executed else None,
                 fee_twd=actual_fee_twd if executed else None,
@@ -178,7 +205,7 @@ class BitoProAdapter(ExchangeAdapter):
                     if executed
                     else "not_applicable"
                 ),
-                message="偵測到今日既有自動訂單，已沿用結果並阻止重複購買",
+                message="偵測到今日既有自動訂單，已沿用結果並阻止重複交易",
                 live=True,
                 reference_hash=(
                     hashlib.sha256(order_id.encode()).hexdigest()[:10]
@@ -187,29 +214,37 @@ class BitoProAdapter(ExchangeAdapter):
                 ),
             )
 
-        price = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
+        buy_price = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
             Decimal("0.001"), rounding=ROUND_UP
         )
-        balances = self._account_balances()
-        available_twd = next(
-            (
-                Decimal(str(balance.get("available", "0")))
-                for balance in balances
-                if str(balance.get("currency", "")).lower() == "twd"
-            ),
-            Decimal("0"),
+        sell_price = (bid * (Decimal("1") - self.settings.price_slippage)).quantize(
+            Decimal("0.001"), rounding=ROUND_DOWN
         )
-        required_twd = price * target
-        if available_twd < required_twd:
+        balances = self._account_balances()
+        available_twd = self._available_balance(balances, "twd")
+        available_usdt = self._available_balance(balances, "usdt")
+        decision = choose_trade_side(
+            available_twd=available_twd,
+            available_usdt=available_usdt,
+            target_usdt=target,
+            buy_price_twd=buy_price,
+            buy_buffer_rate=self.settings.bitopro_taker_fee_rate,
+            usdt_reserve=self.settings.usdt_reserve,
+        )
+        if decision.side == "none":
             return self.base_result(
-                status="failed",
-                message="TWD 可用餘額不足，未送出訂單",
+                status="skipped",
+                requested_usdt=target,
+                message="TWD 不足以買入，扣除保留量後的 USDT 也不足以賣出；本日略過",
                 live=True,
             )
 
+        side = decision.side
+        price = buy_price if side == "buy" else sell_price
+
         timestamp = int(time.time() * 1000)
         body = {
-            "action": "BUY",
+            "action": side.upper(),
             "amount": str(target),
             "price": str(price),
             "timestamp": timestamp,
@@ -268,6 +303,8 @@ class BitoProAdapter(ExchangeAdapter):
         reference_hash = hashlib.sha256(order_id.encode()).hexdigest()[:10]
         return self.base_result(
             status=status,
+            side=side,
+            requested_usdt=target,
             filled_usdt=executed,
             avg_price_twd=avg_price if executed else None,
             fee_twd=actual_fee_twd if executed else None,
@@ -276,13 +313,12 @@ class BitoProAdapter(ExchangeAdapter):
                 if executed
                 else "not_applicable"
             ),
-            message=message,
+            message=f"{'買入' if side == 'buy' else '賣出'}：{message}",
             live=True,
             reference_hash=reference_hash,
         )
 
     def public_status(self, today_status: str = "waiting") -> dict[str, object]:
-        eligible = self.settings.target_usdt >= self.minimum_usdt
         return {
             "id": self.id,
             "name": self.name,
@@ -290,8 +326,10 @@ class BitoProAdapter(ExchangeAdapter):
             "accent": self.accent,
             "api_status": self.api_status,
             "minimum_usdt": str(self.minimum_usdt),
-            "target_eligible": eligible,
+            "minimum_twd": None,
+            "planned_usdt": str(self.planned_usdt),
+            "target_eligible": self.planned_usdt >= self.minimum_usdt,
             "invoice_rule": self.invoice_rule,
             "today_status": today_status,
-            "note": "官方 API 可用限價單執行 USDT/TWD；是否達發票門檻依當日成交手續費估算。",
+            "note": "只做 USDT/TWD；TWD 足夠時買入，否則在 USDT 足夠時賣出。",
         }
