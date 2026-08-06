@@ -201,7 +201,7 @@ gh run watch --exit-status
 | `Build dashboard` | npm install、TypeScript 或 Vite 建置失敗 | 展開該步驟，修復後按 **Re-run failed jobs** |
 | `Upload Pages artifact` | `dist/` 未產生或 artifact 問題 | 確認 Build dashboard 成功，重新執行 workflow |
 | `deploy` 顯示 skipped | 手動 run 的 Branch 不是 `main` | 改選 `main` 再執行 |
-| `Deploy GitHub Pages` 失敗 | Pages Source／權限錯誤，或 GitHub Pages 佇列超過 20 分鐘 | 先檢查 `pages: write`、`id-token: write`；若 log 持續顯示 `deployment_queued`，等待後重新執行 |
+| `Deploy GitHub Pages` 失敗 | Pages Source／權限錯誤，或 GitHub Pages 佇列超過 30 分鐘 | 先檢查 `pages: write`、`id-token: write`；workflow 會自動等待 30 分鐘，若仍失敗再查看 GitHub Status |
 | 網站 404 | 尚未完成首次 deployment、網址錯誤或部署仍在傳播 | 從 Settings → Pages 的 **Visit site** 開啟，等待數分鐘再重整 |
 | 網站仍是舊版 | PR 尚未合併、deploy 未成功或瀏覽器快取 | 確認 `main` commit 與 deployment，再強制重新整理 |
 

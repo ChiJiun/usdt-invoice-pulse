@@ -119,8 +119,86 @@ jobs:
     steps:
       - name: Deploy GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/github-script@v9
         with:
-          # GitHub Pages can remain deployment_queued during service backlogs.
-          # The action default is 10 minutes; allow 20 before cancelling.
-          timeout: 1200000
+          github-token: ${{ github.token }}
+          script: |
+            const { owner, repo } = context.repo;
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {
+                owner,
+                repo,
+                run_id: context.runId,
+                per_page: 100,
+              },
+            );
+            const pagesArtifacts = artifacts.filter(
+              (artifact) => artifact.name === "github-pages" && !artifact.expired,
+            );
+
+            if (pagesArtifacts.length !== 1) {
+              throw new Error(
+                `Expected one github-pages artifact, found ${pagesArtifacts.length}.`,
+              );
+            }
+
+            const oidcToken = await core.getIDToken();
+            const deployment = await github.request(
+              "POST /repos/{owner}/{repo}/pages/deployments",
+              {
+                owner,
+                repo,
+                artifact_id: pagesArtifacts[0].id,
+                pages_build_version: context.sha,
+                oidc_token: oidcToken,
+              },
+            );
+            const deploymentId =
+              deployment.data.id ||
+              deployment.data.status_url?.split("/").pop() ||
+              context.sha;
+            core.setOutput("page_url", deployment.data.page_url || "");
+            core.info(`Created Pages deployment ${deploymentId}.`);
+
+            const finalFailures = new Set([
+              "deployment_failed",
+              "deployment_content_failed",
+              "deployment_cancelled",
+              "deployment_lost",
+            ]);
+            const deadline = Date.now() + 30 * 60 * 1000;
+            let statusErrors = 0;
+
+            while (Date.now() < deadline) {
+              await new Promise((resolve) => setTimeout(resolve, 10000));
+
+              try {
+                const response = await github.request(
+                  "GET /repos/{owner}/{repo}/pages/deployments/{deploymentId}",
+                  { owner, repo, deploymentId },
+                );
+                const status = response.data.status;
+                core.info(`Current Pages status: ${status}`);
+                statusErrors = 0;
+
+                if (status === "succeed") {
+                  core.setOutput("status", "succeed");
+                  return;
+                }
+                if (finalFailures.has(status)) {
+                  throw new Error(`Pages deployment ended with ${status}.`);
+                }
+              } catch (error) {
+                if (finalFailures.has(error.message?.match(/deployment_\w+/)?.[0])) {
+                  throw error;
+                }
+                statusErrors += 1;
+                core.warning(`Unable to read Pages status: ${error.message}`);
+                if (statusErrors >= 10) throw error;
+              }
+            }
+
+            throw new Error(
+              "Pages deployment remained pending for more than 30 minutes.",
+            );
