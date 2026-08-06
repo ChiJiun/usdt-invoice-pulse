@@ -61,16 +61,6 @@ export interface InvoiceRecord {
   note: string | null;
 }
 
-export interface InvoiceSyncStatus {
-  source: "gmail";
-  status: "disabled" | "success" | "partial" | "failed";
-  checked_at: string | null;
-  messages_scanned: number;
-  records_updated: number;
-  unmatched_records: number;
-  note: string;
-}
-
 export interface DailyExchangeStatus {
   exchange: string;
   exchange_name: string;
@@ -120,5 +110,4 @@ export interface DashboardData {
   events: RunEvent[];
   daily_status: DailyStatus;
   invoice_records: InvoiceRecord[];
-  invoice_sync: InvoiceSyncStatus;
 }

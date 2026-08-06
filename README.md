@@ -41,7 +41,6 @@
 | `BITOPRO_ENABLED` | `true` | 是否執行 BitoPro |
 | `MAX_ENABLED` | `true` | 是否執行 MAX |
 | `LIVE_TRADING` | `false` | 真實交易總開關；完成 dry-run 與驗證前不要改成 `true` |
-| `GMAIL_INVOICE_ENABLED` | `false` | Gmail 唯讀發票核對總開關；完成 OAuth 設定後才改成 `true` |
 
 Variables 不是保密儲存，不能放 API Key、Secret、Email 或確認鎖。
 
@@ -62,35 +61,10 @@ API Key 只授予「讀取帳戶＋現貨交易」，**不要授予提領、出�
 | `MAX_API_KEY` | MAX Access Key |
 | `MAX_API_SECRET` | MAX Secret Key |
 | `CONFIRM_LIVE_TRADING` | 必須完全等於 `I_UNDERSTAND_THIS_PLACES_REAL_ORDERS` |
-| `GMAIL_CLIENT_ID` | Google Cloud OAuth Web client ID |
-| `GMAIL_CLIENT_SECRET` | Google Cloud OAuth client secret |
-| `GMAIL_REFRESH_TOKEN` | 只授權 `gmail.readonly` 的離線 refresh token |
 
 只需設定已啟用交易所的憑證。若 Key 曾出現在對話、log、Variable、Issue 或 commit，先到交易所撤銷並重建，再啟用 live。
 
 GitHub-hosted runner 沒有固定出站 IP；如果交易所帳戶強制固定 IP 白名單，請改用具固定 IP 的 self-hosted runner。
-
-### 3A. 啟用 Gmail 唯讀發票核對
-
-1. 到 [Google Cloud Console](https://console.cloud.google.com/) 建立專案，啟用 **Gmail API**。
-2. 到 **Google Auth Platform → Audience**，選 External 並把收取 BitoPro／MAX 發票的 Gmail 加為 test user。若長期保持 Testing，Google 對含 Gmail scope 的 refresh token 只提供 7 天效期；長期排程需改為 Production，或由 Google Workspace 管理員設成 Internal。
-3. 到 **Clients → Create client → Web application**，Authorized redirect URI 加入 `https://developers.google.com/oauthplayground`，保存 client ID 與 client secret。
-4. 開啟 [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)，右上齒輪勾選 **Use your own OAuth credentials**，填入自己的 client ID／secret，Access type 選 **Offline**。
-5. 在 Step 1 輸入唯一 scope：`https://www.googleapis.com/auth/gmail.readonly`，按 **Authorize APIs**，確認登入的是收發票的 Gmail。
-6. 在 Step 2 按 **Exchange authorization code for tokens**，複製 refresh token。不要複製到 Issue、Variable、commit、對話或 log。
-7. 將三個值存入上述 GitHub Actions Secrets，再把 Variable `GMAIL_INVOICE_ENABLED` 改成 `true`。
-8. 手動執行 workflow，mode 選 `validate`。Dashboard 的 **GMAIL READ-ONLY** 應顯示「核對完成」與檢查時間。
-
-> `gmail.readonly` 不能寄信、刪信或修改信件，但授權範圍仍涵蓋整個信箱；Gmail 沒有「只允許某寄件者」的 OAuth scope。本程式會以 query 限制 BitoPro／MAX，但若要把風險降到最低，建議使用專門收發票的 Gmail，或把兩家發票通知自動轉寄到專用帳號。任何能修改 `main` workflow 的協作者都可能影響 Secrets 的使用方式，因此 repository 寫入權限也應只留給可信任的人。
-
-OAuth consent 若維持 Testing，7 天後看到 `invalid_grant` 是預期現象，需重新授權或調整發布狀態。`gmail.readonly` 屬 restricted scope；Google 說明個人用途且少於 100 位已知使用者可不做完整驗證，但登入時仍會看到 unverified app 警告，因此不要把這個 OAuth app 提供給他人。OAuth Playground 必須勾選自己的 credentials；否則 Playground 代管 token 會在 24 小時後撤銷。
-
-預設 Gmail query 如下，可直接貼到 Gmail 搜尋框先確認是否能找到既有發票信：
-
-- BitoPro：`newer_than:14d "幣託科技" {發票 電子發票}`
-- MAX：`newer_than:14d "電子發票開立通知" {MAX MaiCoin "現代財富科技"}`
-
-若實際通知格式不同，可建立非機密 Variables `GMAIL_BITOPRO_QUERY`、`GMAIL_MAX_QUERY` 覆寫；不要在 query 放 Email、發票號碼或其他私人資料。
 
 ### 4. 第一次 dry-run
 
@@ -197,16 +171,17 @@ Dashboard 的 `DAILY PULSE` 分開顯示：
 
 BitoPro 與 MAX 的交易 API 都不會回傳台灣電子發票號碼，因此不能只靠交易 API 自動確認開票。BitoPro 約兩天內通知，MAX 約 1–3 個工作天開立；「昨日尚未查到」不代表最終不會開立。
 
-### Gmail 自動核對邏輯
+### Email 自動核對可行性
 
-1. 每次 schedule 或手動 workflow 完成交易檢查後，以 `gmail.readonly` 回查最近 14 天的兩家發票通知。
-2. 從信件記憶體中解析發票號碼、開立日、成交／消費日與金額；不下載一般附件、不修改已讀狀態，也不刪除或加 Gmail label。
-3. 只有信件明確包含兩家識別字與台灣發票號碼時才建立紀錄。repository 只寫入遮罩號碼、日期、金額、檢查時間與 Gmail message ID 的不可逆雜湊。
-4. 信件有明確成交日就直接配對；否則只有在最近 7 天恰好存在一筆尚未配對的正式成交時才自動配對。候選超過一筆時不猜測，紀錄保留「無法唯一對應成交日」。
-5. 更新 `data/invoice-records.json` 後執行 `--refresh`，Dashboard 同時顯示 Gmail 成功／部分待人工／失敗、掃描封數、更新筆數與遮罩發票明細。
-6. Gmail 失敗不會阻止已完成的交易狀態 commit；Dashboard 會留下安全錯誤狀態，下一次排程再重試。
+可以自動擷取兩家交易所寄來的發票信，但信箱授權方式必須依供應商實作；目前版本尚未連接信箱，也沒有任何 Email 密碼相關環境變數。
 
-完整信件、主旨、寄件者、完整號碼、隨機碼、載具、client secret、refresh token 與短效 access token 都不會寫入 repository 或 Pages。官方規格：[Gmail 唯讀 messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)、[Gmail 伺服器端 OAuth](https://developers.google.com/workspace/gmail/api/auth/web-server)。
+- Gmail：使用 Gmail API 的唯讀 OAuth 與 refresh token，不保存 Google 密碼。
+- Outlook／Microsoft 365：使用 Microsoft Graph 的 `Mail.Read` OAuth，不使用已淘汰的基本帳密驗證。
+- 其他信箱：需確認是否提供 OAuth IMAP；不應把主要信箱密碼放入 GitHub Secrets。
+
+因為開票會延遲，未來的自動核對不應只搜尋「昨天收到的信」，而會每天回查最近 7 天仍待確認的成交，限制寄件者與主旨，再把解析出的開立日、金額、遮罩發票號碼與檢查時間寫入 `data/invoice-records.json`。原始信件、完整號碼、隨機碼、載具與 OAuth access token 都不會發布到 Pages；無法唯一對應成交日時標示 `manual_check`，不會猜測。
+
+正式加入前需要先決定收信信箱是 Gmail、Outlook 或其他服務，才能採用正確的 OAuth 流程與最小權限。官方參考：[Gmail API](https://developers.google.com/workspace/gmail/api/guides)、[Gmail 伺服器端 OAuth](https://developers.google.com/workspace/gmail/api/auth/web-server)、[Microsoft Graph／Exchange 開發建議](https://learn.microsoft.com/en-us/Exchange/client-developer/exchange-server-development)。
 
 ### 更新發票紀錄
 
@@ -253,10 +228,10 @@ git push origin main
 | 觸發方式 | 行為 | 會下單嗎 | 會部署 Pages 嗎 |
 | --- | --- | --- | --- |
 | push `main` | `--refresh`，只重建公開資料 | 否 | 是 |
-| 手動 `validate` | 只讀私人帳戶 API；啟用時也核對 Gmail | 否 | 是 |
-| 手動 `dry-run` | 公開行情模擬；啟用時也核對 Gmail | 否 | 是 |
-| 手動 `live` | 查重後依餘額決定交易，再核對 Gmail | 可能；需通過雙重安全鎖 | 是 |
-| 每日 schedule | `LIVE_TRADING=true` 才 live，之後核對 Gmail | 依設定 | 是 |
+| 手動 `validate` | 只讀私人帳戶 API | 否 | 是 |
+| 手動 `dry-run` | 公開行情模擬 | 否 | 是 |
+| 手動 `live` | 查重後依餘額決定交易 | 可能；需通過雙重安全鎖 | 是 |
+| 每日 schedule | `LIVE_TRADING=true` 才 live，否則 dry-run | 依設定 | 是 |
 
 Workflow 檔案：`.github/workflows/dashboard.yml`。權限用途：
 
@@ -283,7 +258,6 @@ Workflow 檔案：`.github/workflows/dashboard.yml`。權限用途：
 npm ci
 python -m bot.runner --dry-run
 npm run bot:verify
-npm run invoice:sync
 npm test
 ```
 
@@ -304,10 +278,6 @@ npm test
 | deploy 顯示 skipped | 手動 workflow 選的 Branch 不是 `main` |
 | Pages 404 或仍是舊版 | 確認 deploy job 成功，從 Settings → Pages 的 **Visit site** 開啟並等待快取更新 |
 | 排程沒有執行 | 到 Actions 檢查 scheduled workflow 是否被 GitHub 停用 |
-| Gmail 顯示 `failed`／`invalid_grant` | 檢查三個 Gmail Secrets；Testing 狀態的 refresh token 7 天後會失效 |
-| Gmail 掃描為 0 | 先把 README 的預設 query 貼到 Gmail；若實際主旨不同，再用兩個 query Variables 覆寫 |
-| Gmail 有掃描但更新為 0 | 信件內文格式未符合解析器；提供移除姓名、Email、完整號碼、隨機碼與連結後的欄位名稱範例再調整 parser |
-| Gmail 已確認但沒有成交日 | 同一期間有多筆候選成交，程式刻意不猜；可依信件內容人工補上 `trade_date` |
 
 ## 官方參考
 
@@ -315,9 +285,6 @@ npm test
 - [BitoPro 發票規則](https://support.bitopro.com/hc/zh-tw/articles/360001517911)
 - [MAX API 文件](https://max-api.maicoin.com/doc/v3.html)
 - [MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074)
-- [Gmail API messages.list](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list)
-- [Google OAuth Web Server 流程](https://developers.google.com/identity/protocols/oauth2/web-server)
-- [Google 個人用途 OAuth 驗證例外](https://support.google.com/cloud/answer/13464323)
 - [GitHub Pages 自訂 Actions](https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 - [GitHub Actions Secrets](https://docs.github.com/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
 

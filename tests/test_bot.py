@@ -6,7 +6,6 @@ import tempfile
 import time
 import unittest
 from dataclasses import replace
-from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
@@ -14,16 +13,6 @@ from unittest.mock import patch
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
 from bot.exchanges.max_exchange import MaxAdapter
-from bot.gmail_invoices import (
-    DEFAULT_QUERIES,
-    TAIPEI,
-    GmailConfig,
-    choose_trade_date,
-    message_text,
-    parse_amount,
-    parse_invoice_number,
-    sync_gmail_invoices,
-)
 from bot.runner import existing_live_record, normalize_invoice_records, safe_public_url
 from bot.trading import choose_trade_side, effective_target
 
@@ -487,135 +476,6 @@ class DashboardPolicyTests(unittest.TestCase):
             supported,
         )
         self.assertIn("invoice_records", dashboard)
-        self.assertIn("invoice_sync", dashboard)
-
-
-class FakeGmailClient:
-    def __init__(self, messages: dict[str, dict]):
-        self.messages = messages
-
-    def list_message_ids(self, query: str, maximum: int = 50):
-        return list(self.messages)
-
-    def get_message(self, message_id: str):
-        return self.messages[message_id]
-
-    def get_attachment(self, message_id: str, attachment_id: str):
-        raise AssertionError("inline test email should not request an attachment")
-
-
-def gmail_message(message_id: str, html: str, received_at: datetime) -> dict:
-    encoded = base64.urlsafe_b64encode(html.encode()).decode().rstrip("=")
-    return {
-        "id": message_id,
-        "internalDate": str(int(received_at.timestamp() * 1000)),
-        "payload": {
-            "mimeType": "text/html",
-            "headers": [
-                {"name": "Subject", "value": "電子發票開立通知"},
-                {"name": "From", "value": "invoice@example.invalid"},
-            ],
-            "body": {"data": encoded},
-        },
-    }
-
-
-class GmailInvoiceTests(unittest.TestCase):
-    def test_parser_extracts_taiwan_invoice_fields_without_html(self):
-        message = gmail_message(
-            "message-1",
-            "<h1>幣託科技 電子發票</h1><p>發票號碼 AB-12345678</p>"
-            "<p>發票金額：NT$ 1</p>",
-            datetime(2026, 8, 7, 9, 0, tzinfo=TAIPEI),
-        )
-        text = message_text(message)
-        self.assertNotIn("<h1>", text)
-        self.assertEqual(parse_invoice_number(text), "AB12345678")
-        self.assertEqual(parse_amount(text), "1")
-
-    def test_trade_date_is_not_guessed_when_multiple_dates_are_possible(self):
-        selected = choose_trade_date(
-            explicit_date=None,
-            received="2026-08-07",
-            available_dates=["2026-08-05", "2026-08-06"],
-            already_matched=set(),
-        )
-        self.assertIsNone(selected)
-
-    def test_sync_writes_only_masked_record_and_matches_explicit_trade_date(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            dashboard_path = root / "dashboard.json"
-            records_path = root / "invoice-records.json"
-            dashboard_path.write_text(
-                json.dumps(
-                    {
-                        "events": [
-                            {
-                                "exchange": "bitopro",
-                                "date": "2026-08-05",
-                                "mode": "live",
-                                "status": "filled",
-                            }
-                        ]
-                    }
-                ),
-                encoding="utf-8",
-            )
-            records_path.write_text("[]", encoding="utf-8")
-            received_at = datetime(2026, 8, 7, 9, 0, tzinfo=TAIPEI)
-            message = gmail_message(
-                "private-gmail-message-id",
-                "<p>幣託科技 電子發票</p><p>發票號碼 AB12345678</p>"
-                "<p>交易日期：2026/08/05</p><p>發票開立日期：2026/08/07</p>"
-                "<p>發票金額：1</p>",
-                received_at,
-            )
-            config = GmailConfig("client", "secret", "refresh", DEFAULT_QUERIES)
-            status = sync_gmail_invoices(
-                config,
-                dashboard_path=dashboard_path,
-                invoice_records_path=records_path,
-                client=FakeGmailClient({"private-gmail-message-id": message}),
-                now=received_at,
-            )
-            records = json.loads(records_path.read_text(encoding="utf-8"))
-            self.assertEqual(status["status"], "success")
-            self.assertEqual(records[0]["trade_date"], "2026-08-05")
-            self.assertEqual(records[0]["issued_date"], "2026-08-07")
-            self.assertEqual(records[0]["masked_number"], "AB••••••78")
-            serialized = json.dumps(records, ensure_ascii=False)
-            self.assertNotIn("AB12345678", serialized)
-            self.assertNotIn("private-gmail-message-id", serialized)
-
-    def test_sync_recognizes_max_notice_with_roc_dates(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            dashboard_path = root / "dashboard.json"
-            records_path = root / "invoice-records.json"
-            dashboard_path.write_text('{"events": []}', encoding="utf-8")
-            records_path.write_text("[]", encoding="utf-8")
-            received_at = datetime(2026, 8, 7, 10, 0, tzinfo=TAIPEI)
-            message = gmail_message(
-                "max-message-id",
-                "<p>現代財富科技 電子發票開立通知</p>"
-                "<p>發票號碼 CD87654321</p><p>開立日期：115年08月07日</p>"
-                "<p>消費日期：115年08月06日</p><p>總計：新台幣 1 元</p>",
-                received_at,
-            )
-            status = sync_gmail_invoices(
-                GmailConfig("client", "secret", "refresh", DEFAULT_QUERIES),
-                dashboard_path=dashboard_path,
-                invoice_records_path=records_path,
-                client=FakeGmailClient({"max-message-id": message}),
-                now=received_at,
-            )
-            records = json.loads(records_path.read_text(encoding="utf-8"))
-            self.assertEqual(status["records_updated"], 1)
-            self.assertEqual(records[0]["exchange"], "max")
-            self.assertEqual(records[0]["trade_date"], "2026-08-06")
-            self.assertEqual(records[0]["issued_date"], "2026-08-07")
-            self.assertEqual(records[0]["amount_twd"], "1")
 
 
 if __name__ == "__main__":

@@ -29,7 +29,6 @@ INVOICE_STATUS_MAP = {
     "not_found": "not_found",
     "manual_check": "manual_check",
 }
-INVOICE_SYNC_STATUSES = {"disabled", "success", "partial", "failed"}
 
 
 def read_json(path: Path, fallback: Any) -> Any:
@@ -189,39 +188,6 @@ def normalize_invoice_records(
     return records
 
 
-def normalize_invoice_sync_status(raw: Any) -> dict[str, Any]:
-    fallback = {
-        "source": "gmail",
-        "status": "disabled",
-        "checked_at": None,
-        "messages_scanned": 0,
-        "records_updated": 0,
-        "unmatched_records": 0,
-        "note": "尚未啟用 Gmail 唯讀發票核對",
-    }
-    if not isinstance(raw, dict):
-        return fallback
-    status = str(raw.get("status", "disabled"))
-    if status not in INVOICE_SYNC_STATUSES:
-        status = "failed"
-
-    def count(name: str) -> int:
-        try:
-            return max(int(raw.get(name, 0)), 0)
-        except (TypeError, ValueError):
-            return 0
-
-    return {
-        "source": "gmail",
-        "status": status,
-        "checked_at": str(raw.get("checked_at") or "")[:40] or None,
-        "messages_scanned": count("messages_scanned"),
-        "records_updated": count("records_updated"),
-        "unmatched_records": count("unmatched_records"),
-        "note": str(raw.get("note") or fallback["note"]).replace("\n", " ")[:160],
-    }
-
-
 def preferred_event(
     events: list[dict[str, Any]], date_text: str, exchange: str
 ) -> dict[str, Any] | None:
@@ -358,9 +324,6 @@ def run_all(
     state = read_json(settings.state_path, {"version": 1, "live_runs": {}})
     existing_dashboard = read_json(settings.dashboard_path, {"events": []})
     raw_invoice_records = read_json(settings.invoice_records_path, [])
-    invoice_sync = normalize_invoice_sync_status(
-        read_json(settings.invoice_records_path.with_name("invoice-sync-status.json"), {})
-    )
     if not isinstance(raw_invoice_records, list):
         raw_invoice_records = []
 
@@ -376,11 +339,6 @@ def run_all(
         for value in (adapter.id, adapter.name, adapter.short_name)
     }
     invoice_records = normalize_invoice_records(raw_invoice_records, exchange_aliases)
-    confirmed_trade_keys = {
-        (record["exchange"], record["trade_date"])
-        for record in invoice_records
-        if record.get("status") == "confirmed" and record.get("trade_date")
-    }
 
     results: list[RunResult] = []
     if not refresh_only:
@@ -470,8 +428,6 @@ def run_all(
                 1
                 for event in events
                 if event.get("invoice_status") == "pending_confirmation"
-                and (event.get("exchange"), event.get("date"))
-                not in confirmed_trade_keys
             ),
             "total_filled_usdt": decimal_text(total_filled),
             "today_trades": sum(
@@ -489,7 +445,6 @@ def run_all(
         "events": events,
         "daily_status": daily_status,
         "invoice_records": invoice_records,
-        "invoice_sync": invoice_sync,
     }
     write_json(settings.dashboard_path, dashboard)
     if live:
