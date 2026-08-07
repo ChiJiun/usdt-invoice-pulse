@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T11:42:06+08:00",
+  "generated_at": "2026-08-07T12:00:41+08:00",
   "local_date": "2026-08-07",
   "timezone": "Asia/Taipei",
   "mode": "live",
@@ -7,9 +7,9 @@
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 0,
-    "total_filled_usdt": "9",
-    "today_trades": 0,
+    "pending_invoice_checks": 1,
+    "total_filled_usdt": "9.30775799",
+    "today_trades": 1,
     "yesterday_invoices_issued": 0
   },
   "exchanges": [
@@ -36,7 +36,7 @@
       "planned_usdt": "8.0",
       "convert_supported": true,
       "target_eligible": true,
-      "today_status": "failed",
+      "today_status": "filled",
       "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元；現貨資金不足時可改試低額閃兌。"
     }
   ],
@@ -51,26 +51,26 @@
       "filled_usdt": "0",
       "avg_price_twd": null,
       "invoice_status": "not_applicable",
-      "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+      "message": "執行失敗：BitoPro 成交紀錄回應格式不符預期",
       "mode": "live",
-      "occurred_at": "2026-08-07T11:42:07+08:00",
-      "id": "28bddde0dfb28557",
+      "occurred_at": "2026-08-07T12:00:43+08:00",
+      "id": "fce040cc519999b1",
       "date": "2026-08-07"
     },
     {
       "exchange": "max",
       "exchange_name": "MAX Exchange",
-      "status": "failed",
-      "side": "none",
-      "execution_type": "none",
-      "requested_usdt": "1",
-      "filled_usdt": "0",
-      "avg_price_twd": null,
-      "invoice_status": "not_applicable",
-      "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "convert",
+      "requested_usdt": "0.30775799",
+      "filled_usdt": "0.30775799",
+      "avg_price_twd": "32.49306378690606862879498271",
+      "invoice_status": "pending_confirmation",
+      "message": "現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
       "mode": "live",
-      "occurred_at": "2026-08-07T11:42:08+08:00",
-      "id": "3f368054a4e12a78",
+      "occurred_at": "2026-08-07T12:00:45+08:00",
+      "id": "92bba54fa68da7a6",
       "date": "2026-08-07"
     },
     {
@@ -120,7 +120,7 @@
           "side": "none",
           "execution_type": "none",
           "filled_usdt": "0",
-          "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+          "message": "執行失敗：BitoPro 成交紀錄回應格式不符預期",
           "source": "live_record"
         },
         "yesterday_invoice": {
@@ -140,11 +140,11 @@
         "short_name": "MAX",
         "accent": "#1aa679",
         "today_trade": {
-          "status": "failed",
-          "side": "none",
-          "execution_type": "none",
-          "filled_usdt": "0",
-          "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+          "status": "filled",
+          "side": "buy",
+          "execution_type": "convert",
+          "filled_usdt": "0.30775799",
+          "message": "現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
           "source": "live_record"
         },
         "yesterday_invoice": {

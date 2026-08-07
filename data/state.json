@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "live_runs": {}
+  "live_runs": {
+    "2026-08-07": {
+      "max": {
+        "status": "filled",
+        "side": "buy",
+        "execution_type": "convert",
+        "filled_usdt": "0.30775799",
+        "avg_price_twd": "32.49306378690606862879498271"
+      }
+    }
+  }
 }
