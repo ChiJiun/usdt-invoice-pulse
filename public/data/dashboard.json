@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T12:00:41+08:00",
+  "generated_at": "2026-08-07T12:04:14+08:00",
   "local_date": "2026-08-07",
   "timezone": "Asia/Taipei",
   "mode": "live",
@@ -31,9 +31,9 @@
       "name": "MAX Exchange",
       "short_name": "MAX",
       "accent": "#1aa679",
-      "minimum_usdt": "8.0",
-      "minimum_twd": "250.0",
-      "planned_usdt": "8.0",
+      "minimum_usdt": "8",
+      "minimum_twd": "250",
+      "planned_usdt": "8",
       "convert_supported": true,
       "target_eligible": true,
       "today_status": "filled",
@@ -53,8 +53,8 @@
       "invoice_status": "not_applicable",
       "message": "執行失敗：BitoPro 成交紀錄回應格式不符預期",
       "mode": "live",
-      "occurred_at": "2026-08-07T12:00:43+08:00",
-      "id": "fce040cc519999b1",
+      "occurred_at": "2026-08-07T12:04:15+08:00",
+      "id": "ce4766dc887d9326",
       "date": "2026-08-07"
     },
     {
@@ -67,10 +67,10 @@
       "filled_usdt": "0.30775799",
       "avg_price_twd": "32.49306378690606862879498271",
       "invoice_status": "pending_confirmation",
-      "message": "現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
+      "message": "repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
       "mode": "live",
-      "occurred_at": "2026-08-07T12:00:45+08:00",
-      "id": "92bba54fa68da7a6",
+      "occurred_at": "2026-08-07T12:04:15+08:00",
+      "id": "ec384f594ee34ba4",
       "date": "2026-08-07"
     },
     {
@@ -144,7 +144,7 @@
           "side": "buy",
           "execution_type": "convert",
           "filled_usdt": "0.30775799",
-          "message": "現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
+          "message": "repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
           "source": "live_record"
         },
         "yesterday_invoice": {
