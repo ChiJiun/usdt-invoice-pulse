@@ -302,6 +302,33 @@ class RuleTests(unittest.TestCase):
         self.assertIn("今日已有", result.message)
         self.assertFalse(any(method == "POST" for method, _ in http.calls))
 
+    def test_bitopro_empty_trade_payload_variants_mean_no_existing_trade(self):
+        configured = replace(
+            settings(),
+            bitopro_email="member@example.invalid",
+            bitopro_api_key="key",
+            bitopro_api_secret="secret",
+        )
+        for payload in (None, {}):
+            with self.subTest(payload=payload):
+                http = FakeHttp()
+                http.bitopro_trades = payload
+                adapter = BitoProAdapter(configured, http)
+                self.assertIsNone(adapter._find_today_trade(adapter.now()))
+
+    def test_bitopro_unknown_nonempty_trade_payload_is_rejected(self):
+        configured = replace(
+            settings(),
+            bitopro_email="member@example.invalid",
+            bitopro_api_key="key",
+            bitopro_api_secret="secret",
+        )
+        http = FakeHttp()
+        http.bitopro_trades = {"trades": []}
+        adapter = BitoProAdapter(configured, http)
+        with self.assertRaisesRegex(RuntimeError, "data 類型：dict"):
+            adapter._find_today_trade(adapter.now())
+
     def test_max_live_prefers_buy_and_uses_eight_usdt(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
         http = FakeHttp(max_twd="1000", max_usdt="100")
@@ -412,7 +439,13 @@ class RuleTests(unittest.TestCase):
         )
         http = FakeHttp()
         BitoProAdapter(configured, http).verify_credentials()
-        self.assertEqual(http.calls, [("GET", "https://api.bitopro.com/v3/accounts/balance")])
+        self.assertEqual(
+            http.calls,
+            [
+                ("GET", "https://api.bitopro.com/v3/accounts/balance"),
+                ("GET", "https://api.bitopro.com/v3/orders/trades/usdt_twd"),
+            ],
+        )
 
     def test_max_credential_check_is_read_only(self):
         configured = replace(

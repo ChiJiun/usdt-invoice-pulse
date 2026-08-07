@@ -107,9 +107,31 @@ class BitoProAdapter(ExchangeAdapter):
         )
 
     def verify_credentials(self) -> None:
-        """只驗證簽章與帳戶讀取權限，不送出訂單。"""
+        """驗證簽章、帳戶與成交紀錄讀取權限，不送出訂單。"""
         self._validate_credentials()
         self._account_balances()
+        self._find_today_trade(self.now())
+
+    @staticmethod
+    def _trade_rows(response: Any) -> list[dict[str, Any]]:
+        if not isinstance(response, dict) or "data" not in response:
+            raise RuntimeError("BitoPro 成交紀錄回應缺少 data 欄位")
+
+        payload = response["data"]
+        # The official schema documents an array, but an account with no trade
+        # history can return null or an empty object. Both mean there is no
+        # existing fill; any non-empty unknown shape remains a hard failure so
+        # the duplicate-order safeguard never guesses.
+        if payload is None or payload == {}:
+            return []
+        if not isinstance(payload, list) or not all(
+            isinstance(trade, dict) for trade in payload
+        ):
+            raise RuntimeError(
+                "BitoPro 成交紀錄回應格式不符預期"
+                f"（data 類型：{type(payload).__name__}）"
+            )
+        return payload
 
     def _find_today_trade(self, current) -> dict[str, Any] | None:
         """Return the latest real USDT/TWD fill for the Taipei calendar day."""
@@ -124,9 +146,7 @@ class BitoProAdapter(ExchangeAdapter):
             },
             headers=self._read_headers(),
         )
-        trades = response.get("data", []) if isinstance(response, dict) else []
-        if not isinstance(trades, list):
-            raise RuntimeError("BitoPro 成交紀錄回應格式不符預期")
+        trades = self._trade_rows(response)
         valid = [
             trade
             for trade in trades
