@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-08-07T01:02:13+08:00",
+  "generated_at": "2026-08-07T11:42:06+08:00",
   "local_date": "2026-08-07",
   "timezone": "Asia/Taipei",
-  "mode": "dry_run",
+  "mode": "live",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
@@ -23,7 +23,7 @@
       "planned_usdt": "1",
       "convert_supported": false,
       "target_eligible": true,
-      "today_status": "simulated",
+      "today_status": "failed",
       "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。"
     },
     {
@@ -36,11 +36,43 @@
       "planned_usdt": "8.0",
       "convert_supported": true,
       "target_eligible": true,
-      "today_status": "simulated",
+      "today_status": "failed",
       "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元；現貨資金不足時可改試低額閃兌。"
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "failed",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "1",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+      "mode": "live",
+      "occurred_at": "2026-08-07T11:42:07+08:00",
+      "id": "28bddde0dfb28557",
+      "date": "2026-08-07"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "failed",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "1",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+      "mode": "live",
+      "occurred_at": "2026-08-07T11:42:08+08:00",
+      "id": "3f368054a4e12a78",
+      "date": "2026-08-07"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -84,12 +116,12 @@
         "short_name": "BP",
         "accent": "#2f6bff",
         "today_trade": {
-          "status": "no_record",
+          "status": "failed",
           "side": "none",
           "execution_type": "none",
           "filled_usdt": "0",
-          "message": "今日尚未執行或保存成交檢查",
-          "source": "none"
+          "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+          "source": "live_record"
         },
         "yesterday_invoice": {
           "status": "not_applicable",
@@ -108,12 +140,12 @@
         "short_name": "MAX",
         "accent": "#1aa679",
         "today_trade": {
-          "status": "no_record",
+          "status": "failed",
           "side": "none",
           "execution_type": "none",
           "filled_usdt": "0",
-          "message": "今日尚未執行或保存成交檢查",
-          "source": "none"
+          "message": "執行失敗：'latin-1' codec can't encode character '\\ufeff' in position 0: ordinal not in range(256)",
+          "source": "live_record"
         },
         "yesterday_invoice": {
           "status": "not_applicable",
