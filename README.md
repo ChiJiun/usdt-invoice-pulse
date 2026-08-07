@@ -44,6 +44,8 @@
 
 Variables 不是保密儲存，不能放 API Key、Secret、Email 或確認鎖。
 
+程式載入 Secrets 時會自動移除複製貼上可能帶入的 UTF-8 BOM 與前後空白，避免不可見字元造成 HTTP header 編碼或簽章失敗；Secret 內容仍應只貼原始值，不要包含變數名稱或引號。
+
 ### 3. 建立交易所 API Key 與 Actions Secrets
 
 API Key 只授予「讀取帳戶＋現貨交易」，**不要授予提領、出金或新增提領地址權限**。
@@ -272,6 +274,7 @@ npm test
 | MAX 閃兌失敗 | 官方未公開最低量；程式不會自動加碼，可調整閃兌 Variables 或關閉 fallback |
 | `LIVE_TRADING 尚未開啟` | workflow 選了 live，但 Variable 仍是 `false` |
 | `Unauthorized api key`／簽章失敗 | 檢查 Secret、BitoPro Email、權限與 Key 是否過期；不要把值貼到 log |
+| `'latin-1' codec can't encode character '\ufeff'` | Secret 開頭含 UTF-8 BOM；新版程式會在載入時自動清除，再執行 `validate` 確認 |
 | 餘額不足而略過 | TWD 不足，扣除保留量後的 USDT 也不足；MAX 可能同時沒有可用閃兌額 |
 | `USDT_RESERVE` 要設多少 | 它不是交易所門檻，只是防止程式賣光 USDT；不需要保留量就維持 `0` |
 | 今日已有正式成交 | 防重複機制生效，會沿用既有結果而不再下單 |

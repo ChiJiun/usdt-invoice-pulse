@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -179,6 +180,33 @@ class SignatureTests(unittest.TestCase):
         decoded = base64.b64decode(payload).decode()
         self.assertIn('"path":"/api/v3/info"', decoded)
         self.assertEqual(len(signature), 64)
+
+
+class ConfigurationTests(unittest.TestCase):
+    def test_environment_values_strip_utf8_bom_and_edge_whitespace(self):
+        environment = {
+            "ORDER_USDT": " \ufeff1 ",
+            "LIVE_TRADING": "\ufeff true ",
+            "CONFIRM_LIVE_TRADING": (
+                "\ufeffI_UNDERSTAND_THIS_PLACES_REAL_ORDERS\n"
+            ),
+            "BITOPRO_EMAIL": " \ufeffowner@example.com ",
+            "BITOPRO_API_KEY": "\ufeffbito-key\n",
+            "BITOPRO_API_SECRET": " \ufeffbito-secret ",
+            "MAX_API_KEY": "\ufeffmax-key ",
+            "MAX_API_SECRET": " \ufeffmax-secret\n",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            loaded = Settings.from_env()
+
+        self.assertEqual(loaded.target_usdt, Decimal("1"))
+        self.assertTrue(loaded.live_trading)
+        loaded.assert_live_authorized()
+        self.assertEqual(loaded.bitopro_email, "owner@example.com")
+        self.assertEqual(loaded.bitopro_api_key, "bito-key")
+        self.assertEqual(loaded.bitopro_api_secret, "bito-secret")
+        self.assertEqual(loaded.max_api_key, "max-key")
+        self.assertEqual(loaded.max_api_secret, "max-secret")
 
 
 class RuleTests(unittest.TestCase):
@@ -466,7 +494,13 @@ class DashboardPolicyTests(unittest.TestCase):
             for event in dashboard["events"]
         ]
         self.assertEqual(len(event_scopes), len(set(event_scopes)))
-        max_event = next(event for event in dashboard["events"] if event["exchange"] == "max")
+        max_event = next(
+            event
+            for event in dashboard["events"]
+            if event["exchange"] == "max"
+            and event["mode"] == "dry_run"
+            and event["status"] == "simulated"
+        )
         self.assertEqual(Decimal(max_event["requested_usdt"]), Decimal("8"))
         self.assertIn(max_event["side"], {"buy", "sell", "none"})
         self.assertIn(max_event["execution_type"], {"spot", "convert", "none"})

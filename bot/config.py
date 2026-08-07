@@ -6,15 +6,23 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
+def env_text(name: str, default: str = "") -> str:
+    """Normalize invisible edge characters introduced by copy and paste."""
+    value = os.getenv(name, default)
+    # GitHub Secrets copied from a UTF-8 BOM file can begin with U+FEFF.  It is
+    # invisible in the UI, but urllib cannot encode it in an HTTP header and it
+    # also changes HMAC signatures. Credentials never legitimately need edge
+    # whitespace or a BOM, so normalize both at the configuration boundary.
+    return value.strip().strip("\ufeff").strip()
+
+
 def env_bool(name: str, default: bool = False) -> bool:
-    value = os.getenv(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+    value = env_text(name, "true" if default else "false")
+    return value.lower() in {"1", "true", "yes", "on"}
 
 
 def env_decimal(name: str, default: str) -> Decimal:
-    raw = os.getenv(name, default)
+    raw = env_text(name, default)
     try:
         value = Decimal(raw)
     except InvalidOperation as exc:
@@ -25,7 +33,7 @@ def env_decimal(name: str, default: str) -> Decimal:
 
 
 def env_nonnegative_decimal(name: str, default: str) -> Decimal:
-    raw = os.getenv(name, default)
+    raw = env_text(name, default)
     try:
         value = Decimal(raw)
     except InvalidOperation as exc:
@@ -67,21 +75,21 @@ class Settings:
             max_convert_twd_amount=env_decimal("MAX_CONVERT_TWD_AMOUNT", "10"),
             max_convert_usdt_amount=env_decimal("MAX_CONVERT_USDT_AMOUNT", "1"),
             live_trading=env_bool("LIVE_TRADING", False),
-            live_confirmation=os.getenv("CONFIRM_LIVE_TRADING", ""),
+            live_confirmation=env_text("CONFIRM_LIVE_TRADING"),
             bitopro_enabled=env_bool("BITOPRO_ENABLED", True),
             max_enabled=env_bool("MAX_ENABLED", True),
-            bitopro_email=os.getenv("BITOPRO_EMAIL", ""),
-            bitopro_api_key=os.getenv("BITOPRO_API_KEY", ""),
-            bitopro_api_secret=os.getenv("BITOPRO_API_SECRET", ""),
-            max_api_key=os.getenv("MAX_API_KEY", ""),
-            max_api_secret=os.getenv("MAX_API_SECRET", ""),
+            bitopro_email=env_text("BITOPRO_EMAIL"),
+            bitopro_api_key=env_text("BITOPRO_API_KEY"),
+            bitopro_api_secret=env_text("BITOPRO_API_SECRET"),
+            max_api_key=env_text("MAX_API_KEY"),
+            max_api_secret=env_text("MAX_API_SECRET"),
             bitopro_taker_fee_rate=env_decimal("BITOPRO_TAKER_FEE_RATE", "0.002"),
             max_taker_fee_rate=env_decimal("MAX_TAKER_FEE_RATE", "0.0016"),
             price_slippage=env_decimal("ORDER_PRICE_SLIPPAGE", "0.005"),
-            dashboard_path=Path(os.getenv("DASHBOARD_PATH", "public/data/dashboard.json")),
-            state_path=Path(os.getenv("STATE_PATH", "data/state.json")),
+            dashboard_path=Path(env_text("DASHBOARD_PATH", "public/data/dashboard.json")),
+            state_path=Path(env_text("STATE_PATH", "data/state.json")),
             invoice_records_path=Path(
-                os.getenv("INVOICE_RECORDS_PATH", "data/invoice-records.json")
+                env_text("INVOICE_RECORDS_PATH", "data/invoice-records.json")
             ),
         )
 
