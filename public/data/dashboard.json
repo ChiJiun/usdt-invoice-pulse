@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-07T12:12:46+08:00",
-  "local_date": "2026-08-07",
+  "generated_at": "2026-08-08T11:01:10+08:00",
+  "local_date": "2026-08-08",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 2,
-    "total_filled_usdt": "10.30775799",
+    "pending_invoice_checks": 4,
+    "total_filled_usdt": "19.30775799",
     "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
@@ -31,9 +31,9 @@
       "name": "MAX Exchange",
       "short_name": "MAX",
       "accent": "#1aa679",
-      "minimum_usdt": "8",
-      "minimum_twd": "250",
-      "planned_usdt": "8",
+      "minimum_usdt": "8.0",
+      "minimum_twd": "250.0",
+      "planned_usdt": "8.0",
       "convert_supported": true,
       "target_eligible": true,
       "today_status": "filled",
@@ -41,6 +41,38 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "1",
+      "filled_usdt": "1",
+      "avg_price_twd": "32.354",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-08T11:01:15+08:00",
+      "id": "7d966fc10815090e",
+      "date": "2026-08-08"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "sell",
+      "execution_type": "spot",
+      "requested_usdt": "8",
+      "filled_usdt": "8",
+      "avg_price_twd": "32.339",
+      "invoice_status": "pending_confirmation",
+      "message": "賣出：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-08T11:01:20+08:00",
+      "id": "252d7cc4f2ea43d2",
+      "date": "2026-08-08"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -107,8 +139,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-08-07",
-    "yesterday_date": "2026-08-06",
+    "today_date": "2026-08-08",
+    "yesterday_date": "2026-08-07",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -124,14 +156,14 @@
           "source": "live_record"
         },
         "yesterday_invoice": {
-          "status": "not_applicable",
+          "status": "pending_confirmation",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.bitopro.com/hc/zh-tw/articles/360018704812",
-          "note": "昨日沒有保存到正式成交紀錄"
+          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
         }
       },
       {
@@ -141,21 +173,21 @@
         "accent": "#1aa679",
         "today_trade": {
           "status": "filled",
-          "side": "buy",
-          "execution_type": "convert",
-          "filled_usdt": "0.30775799",
-          "message": "repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
+          "side": "sell",
+          "execution_type": "spot",
+          "filled_usdt": "8",
+          "message": "賣出：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
         "yesterday_invoice": {
-          "status": "not_applicable",
+          "status": "pending_confirmation",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
-          "note": "昨日沒有保存到正式成交紀錄"
+          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
         }
       }
     ]
