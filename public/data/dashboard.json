@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-09T11:09:15+08:00",
-  "local_date": "2026-08-09",
+  "generated_at": "2026-08-10T11:19:23+08:00",
+  "local_date": "2026-08-10",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 6,
-    "total_filled_usdt": "28.30775799",
+    "pending_invoice_checks": 8,
+    "total_filled_usdt": "37.30775799",
     "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
@@ -41,6 +41,38 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "1",
+      "filled_usdt": "1",
+      "avg_price_twd": "32.257",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-10T11:19:27+08:00",
+      "id": "913f7a704d7521ae",
+      "date": "2026-08-10"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "8",
+      "filled_usdt": "8",
+      "avg_price_twd": "32.253",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-10T11:19:32+08:00",
+      "id": "2f28cf5aa1c1ce17",
+      "date": "2026-08-10"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -171,8 +203,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-08-09",
-    "yesterday_date": "2026-08-08",
+    "today_date": "2026-08-10",
+    "yesterday_date": "2026-08-09",
     "exchanges": [
       {
         "exchange": "bitopro",
