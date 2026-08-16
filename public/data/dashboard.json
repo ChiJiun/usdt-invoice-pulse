@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-08-15T10:19:49+08:00",
-  "local_date": "2026-08-15",
+  "generated_at": "2026-08-16T10:35:25+08:00",
+  "local_date": "2026-08-16",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 18,
-    "total_filled_usdt": "82.30775799",
+    "pending_invoice_checks": 20,
+    "total_filled_usdt": "91.30775799",
     "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
@@ -41,6 +41,38 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "1",
+      "filled_usdt": "1",
+      "avg_price_twd": "32.071",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-16T10:35:30+08:00",
+      "id": "3f651527509c5231",
+      "date": "2026-08-16"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "sell",
+      "execution_type": "spot",
+      "requested_usdt": "8",
+      "filled_usdt": "8",
+      "avg_price_twd": "32.057",
+      "invoice_status": "pending_confirmation",
+      "message": "賣出：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-08-16T10:35:36+08:00",
+      "id": "2a7d086689713443",
+      "date": "2026-08-16"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -363,8 +395,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-08-15",
-    "yesterday_date": "2026-08-14",
+    "today_date": "2026-08-16",
+    "yesterday_date": "2026-08-15",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -397,10 +429,10 @@
         "accent": "#1aa679",
         "today_trade": {
           "status": "filled",
-          "side": "buy",
+          "side": "sell",
           "execution_type": "spot",
           "filled_usdt": "8",
-          "message": "買入：訂單已全數成交；等待電子發票開立通知",
+          "message": "賣出：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
         "yesterday_invoice": {
