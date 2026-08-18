@@ -176,6 +176,22 @@
         "filled_usdt": "8",
         "avg_price_twd": "31.929"
       }
+    },
+    "2026-08-18": {
+      "bitopro": {
+        "status": "filled",
+        "side": "buy",
+        "execution_type": "spot",
+        "filled_usdt": "1",
+        "avg_price_twd": "31.845"
+      },
+      "max": {
+        "status": "filled",
+        "side": "sell",
+        "execution_type": "spot",
+        "filled_usdt": "8",
+        "avg_price_twd": "31.839"
+      }
     }
   }
 }
