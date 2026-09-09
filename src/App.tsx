@@ -195,8 +195,14 @@ function ExchangeCard({
       </div>
       <div className="eligibility-line">
         <span className={exchange.target_eligible ? "tick tick--yes" : "tick"} aria-hidden="true" />
-        本次計畫 {formatNumber(exchange.planned_usdt, 4)} USDT
-        {exchange.target_eligible ? "，已符合門檻" : "，目前不可執行"}
+        {exchange.invoice_target_twd ? (
+          <>執行時依即時行情換算，成交目標至少 NT$ {formatNumber(exchange.invoice_target_twd, 0)}</>
+        ) : (
+          <>
+            本次計畫 {formatNumber(exchange.planned_usdt, 4)} USDT
+            {exchange.target_eligible ? "，已符合門檻" : "，目前不可執行"}
+          </>
+        )}
       </div>
     </article>
   );
