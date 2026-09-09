@@ -108,6 +108,7 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
     .map((exchange) => ({
       ...exchange,
       minimum_twd: exchange.minimum_twd ?? null,
+      invoice_target_twd: exchange.invoice_target_twd ?? null,
       planned_usdt: exchange.planned_usdt ?? exchange.minimum_usdt,
       convert_supported: exchange.convert_supported ?? false,
     }));
@@ -181,6 +182,12 @@ function ExchangeCard({
           {exchange.minimum_twd ? ` · NT$ ${formatNumber(exchange.minimum_twd, 0)}` : ""}
         </strong>
       </div>
+      {exchange.invoice_target_twd && (
+        <div className="limit-row">
+          <span>開票成交目標</span>
+          <strong>NT$ {formatNumber(exchange.invoice_target_twd, 0)}</strong>
+        </div>
+      )}
       <p className="exchange-note">{exchange.note}</p>
       <div className="capability-line">
         <span>{exchange.convert_supported ? "現貨＋閃兌 fallback" : "現貨交易"}</span>
@@ -381,7 +388,7 @@ function App() {
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
             <h1>今天有沒有成交，<br /><em>昨天有沒有開票。</em></h1>
             <p className="hero-lead">
-              每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT；MAX 現貨資金不足時再試低額閃兌。執行前會查官方成交紀錄，發票則保存後續確認結果。
+              每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT；MAX 每筆以至少 NT$313 為開票成交目標。執行前會查官方成交紀錄，發票則保存後續確認結果。
             </p>
           </div>
 
@@ -395,7 +402,7 @@ function App() {
             <div>
               <p className="eyebrow">TODAY'S READINESS</p>
               <h2>{readinessTitle}</h2>
-              <p>設定下限為 {formatNumber(data.target_usdt, 4)} USDT；各平台會自動提高到官方最低可成交量。</p>
+              <p>設定下限為 {formatNumber(data.target_usdt, 4)} USDT；MAX 另會提高至至少 NT$313 的成交目標。</p>
             </div>
           </aside>
         </div>

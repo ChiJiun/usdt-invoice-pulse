@@ -24,6 +24,7 @@ export interface ExchangeStatus {
   accent: string;
   minimum_usdt: string;
   minimum_twd: string | null;
+  invoice_target_twd: string | null;
   planned_usdt: string;
   convert_supported: boolean;
   target_eligible: boolean;

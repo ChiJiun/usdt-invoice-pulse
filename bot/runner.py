@@ -223,7 +223,6 @@ def refreshed_exchange_status(adapter: Any, existing: dict[str, Any]) -> dict[st
         "planned_usdt",
         "target_eligible",
         "today_status",
-        "note",
     ):
         if field in existing:
             status[field] = existing[field]

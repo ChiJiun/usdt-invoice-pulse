@@ -199,7 +199,7 @@ class MaxAdapter(ExchangeAdapter):
             status="filled" if filled_usdt > 0 else "failed",
             side=side,
             execution_type="convert",
-            requested_usdt=filled_usdt or self.settings.max_convert_usdt_amount,
+            requested_usdt=filled_usdt or self.planned_usdt,
             filled_usdt=filled_usdt,
             avg_price_twd=avg_price,
             invoice_status=(
@@ -225,26 +225,20 @@ class MaxAdapter(ExchangeAdapter):
             )
 
         available_twd = self._available_balance(balances, "twd")
-        available_usdt = self._available_balance(balances, "usdt")
-        sellable_usdt = max(
-            available_usdt - self.settings.usdt_reserve, Decimal("0")
-        )
-        if available_twd > 0:
-            from_currency = "twd"
-            to_currency = "usdt"
-            amount = min(available_twd, self.settings.max_convert_twd_amount)
-        elif sellable_usdt > 0:
-            from_currency = "usdt"
-            to_currency = "twd"
-            amount = min(sellable_usdt, self.settings.max_convert_usdt_amount)
-        else:
+        amount = self.settings.max_invoice_twd_target
+        if available_twd < amount:
             return self.base_result(
                 status="skipped",
                 requested_usdt=target,
-                message="現貨與閃兌都沒有可用的 TWD／USDT；本日略過",
+                message=(
+                    "現貨資金不足，且可用 TWD 未達 MAX 開票成交目標 "
+                    f"NT$ {amount.normalize():f}；本日略過"
+                ),
                 live=True,
             )
 
+        from_currency = "twd"
+        to_currency = "usdt"
         path = "/api/v3/convert"
         body = {
             "nonce": int(time.time() * 1000),
@@ -262,21 +256,20 @@ class MaxAdapter(ExchangeAdapter):
         except ApiError as exc:
             return self.base_result(
                 status="failed",
-                side="buy" if from_currency == "twd" else "sell",
+                side="buy",
                 execution_type="convert",
-                requested_usdt=(
-                    amount / reference_price
-                    if from_currency == "twd"
-                    else amount
-                ),
-                message=f"現貨資金不足，MAX 低額閃兌嘗試未成功：{exc}",
+                requested_usdt=amount / reference_price,
+                message=f"現貨資金不足，MAX NT$ {amount.normalize():f} 閃兌未成功：{exc}",
                 live=True,
             )
         if not isinstance(order, dict):
             raise RuntimeError("MAX 閃兌回應格式不符預期")
         return self._convert_result(
             order,
-            message="現貨資金不足，已改用 MAX 低額閃兌成交；發票待實際開立確認",
+            message=(
+                f"現貨資金不足，已改用 MAX NT$ {amount.normalize():f} 閃兌成交；"
+                "發票待實際開立確認"
+            ),
         )
 
     def run(self, *, live: bool):
@@ -286,7 +279,7 @@ class MaxAdapter(ExchangeAdapter):
         target = effective_target(
             self.settings.target_usdt,
             minimum_base,
-            minimum_quote,
+            max(minimum_quote, self.settings.max_invoice_twd_target),
             bid,
             quantity_step(base_precision),
         )
@@ -309,7 +302,10 @@ class MaxAdapter(ExchangeAdapter):
                 filled_usdt=target,
                 avg_price_twd=ask,
                 invoice_status="not_applicable",
-                message="已自動提高至 MAX 最低量；正式模式優先現貨，資金不足時可改試低額閃兌",
+                message=(
+                    "已自動提高至 MAX 開票成交目標；正式模式優先現貨，"
+                    "買入緩衝不足但仍有目標額 TWD 時可改試閃兌"
+                ),
                 live=False,
             )
 
@@ -406,6 +402,7 @@ class MaxAdapter(ExchangeAdapter):
             "accent": self.accent,
             "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": str(self.minimum_twd),
+            "invoice_target_twd": str(self.settings.max_invoice_twd_target),
             "planned_usdt": str(self.planned_usdt),
             "convert_supported": True,
             "target_eligible": (
@@ -416,6 +413,7 @@ class MaxAdapter(ExchangeAdapter):
             "note": (
                 "只做 USDT/TWD；目前最低 "
                 f"{self.minimum_usdt.normalize():f} USDT／"
-                f"新台幣 {self.minimum_twd.normalize():f} 元；現貨資金不足時可改試低額閃兌。"
+                f"新台幣 {self.minimum_twd.normalize():f} 元；程式以 "
+                f"NT$ {self.settings.max_invoice_twd_target.normalize():f} 為開票成交目標。"
             ),
         }

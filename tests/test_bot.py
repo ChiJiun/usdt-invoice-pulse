@@ -23,9 +23,8 @@ def settings(target: str = "1") -> Settings:
     return Settings(
         target_usdt=Decimal(target),
         usdt_reserve=Decimal("0"),
+        max_invoice_twd_target=Decimal("313"),
         max_convert_enabled=True,
-        max_convert_twd_amount=Decimal("10"),
-        max_convert_usdt_amount=Decimal("1"),
         live_trading=False,
         live_confirmation="",
         bitopro_enabled=True,
@@ -137,12 +136,13 @@ class FakeHttp:
         if method == "POST" and url.endswith("/api/v3/convert"):
             self.last_body = kwargs["body"]
             if self.last_body["from_currency"] == "twd":
+                converted = Decimal(self.last_body["from_amount"]) / Decimal("32.25")
                 return {
                     "sn": "convert-twd-1",
                     "from_currency": "twd",
                     "from_amount": self.last_body["from_amount"],
                     "to_currency": "usdt",
-                    "to_amount": "0.31",
+                    "to_amount": str(converted),
                     "fee": "0",
                     "fee_currency": "usdt",
                     "fee_in_twd": "0",
@@ -200,6 +200,7 @@ class ConfigurationTests(unittest.TestCase):
             loaded = Settings.from_env()
 
         self.assertEqual(loaded.target_usdt, Decimal("1"))
+        self.assertEqual(loaded.max_invoice_twd_target, Decimal("313"))
         self.assertTrue(loaded.live_trading)
         loaded.assert_live_authorized()
         self.assertEqual(loaded.bitopro_email, "owner@example.com")
@@ -219,12 +220,12 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(result.invoice_status, "not_applicable")
         self.assertEqual(result.execution_type, "spot")
 
-    def test_max_one_usdt_floor_is_raised_to_eight(self):
+    def test_max_one_usdt_floor_is_raised_to_invoice_target(self):
         result = MaxAdapter(settings(), FakeHttp()).run(live=False)
         self.assertEqual(result.status, "simulated")
         self.assertEqual(result.side, "buy")
-        self.assertEqual(result.requested_usdt, Decimal("8"))
-        self.assertEqual(result.filled_usdt, Decimal("8"))
+        self.assertEqual(result.requested_usdt, Decimal("9.71"))
+        self.assertEqual(result.filled_usdt, Decimal("9.71"))
 
     def test_quote_minimum_can_raise_target_above_base_minimum(self):
         target = effective_target(
@@ -329,14 +330,14 @@ class RuleTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "data 類型：dict"):
             adapter._find_today_trade(adapter.now())
 
-    def test_max_live_prefers_buy_and_uses_eight_usdt(self):
+    def test_max_live_prefers_buy_and_uses_invoice_target(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
         http = FakeHttp(max_twd="1000", max_usdt="100")
         result = MaxAdapter(configured, http).run(live=True)
         self.assertEqual(result.status, "filled")
         self.assertEqual(result.side, "buy")
         self.assertEqual(result.execution_type, "spot")
-        self.assertEqual(http.last_body["volume"], "8")
+        self.assertEqual(http.last_body["volume"], "9.71")
 
     def test_max_existing_today_spot_trade_blocks_duplicate(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
@@ -360,32 +361,31 @@ class RuleTests(unittest.TestCase):
 
     def test_max_live_falls_back_to_sell(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
-        http = FakeHttp(max_twd="0", max_usdt="8")
+        http = FakeHttp(max_twd="0", max_usdt="9.71")
         result = MaxAdapter(configured, http).run(live=True)
         self.assertEqual(result.status, "filled")
         self.assertEqual(result.side, "sell")
         self.assertEqual(http.last_body["side"], "sell")
 
-    def test_insufficient_spot_balance_uses_low_twd_convert(self):
+    def test_buy_buffer_shortfall_uses_invoice_target_twd_convert(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
-        http = FakeHttp(max_twd="100", max_usdt="0")
+        http = FakeHttp(max_twd="313", max_usdt="0")
         result = MaxAdapter(configured, http).run(live=True)
         self.assertEqual(result.status, "filled")
         self.assertEqual(result.side, "buy")
         self.assertEqual(result.execution_type, "convert")
         self.assertEqual(result.invoice_status, "pending_confirmation")
         self.assertEqual(http.last_body["from_currency"], "twd")
-        self.assertEqual(http.last_body["from_amount"], "10")
+        self.assertEqual(http.last_body["from_amount"], "313")
 
-    def test_insufficient_spot_balance_uses_low_usdt_convert(self):
+    def test_balance_below_invoice_target_is_skipped(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
         http = FakeHttp(max_twd="0", max_usdt="7")
         result = MaxAdapter(configured, http).run(live=True)
-        self.assertEqual(result.status, "filled")
-        self.assertEqual(result.side, "sell")
-        self.assertEqual(result.execution_type, "convert")
-        self.assertEqual(http.last_body["from_currency"], "usdt")
-        self.assertEqual(http.last_body["from_amount"], "1")
+        self.assertEqual(result.status, "skipped")
+        self.assertEqual(result.execution_type, "none")
+        self.assertIn("NT$ 313", result.message)
+        self.assertFalse(any(method == "POST" for method, _ in http.calls))
 
     def test_no_balance_is_skipped_without_convert(self):
         configured = replace(settings(), max_api_key="key", max_api_secret="secret")
@@ -403,7 +403,7 @@ class RuleTests(unittest.TestCase):
             max_api_secret="secret",
             max_convert_enabled=False,
         )
-        http = FakeHttp(max_twd="100", max_usdt="0")
+        http = FakeHttp(max_twd="313", max_usdt="0")
         result = MaxAdapter(configured, http).run(live=True)
         self.assertEqual(result.status, "skipped")
         self.assertIn("未啟用", result.message)

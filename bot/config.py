@@ -47,9 +47,8 @@ def env_nonnegative_decimal(name: str, default: str) -> Decimal:
 class Settings:
     target_usdt: Decimal
     usdt_reserve: Decimal
+    max_invoice_twd_target: Decimal
     max_convert_enabled: bool
-    max_convert_twd_amount: Decimal
-    max_convert_usdt_amount: Decimal
     live_trading: bool
     live_confirmation: str
     bitopro_enabled: bool
@@ -71,9 +70,8 @@ class Settings:
         return cls(
             target_usdt=env_decimal("ORDER_USDT", "1"),
             usdt_reserve=env_nonnegative_decimal("USDT_RESERVE", "0"),
+            max_invoice_twd_target=env_decimal("MAX_INVOICE_TWD_TARGET", "313"),
             max_convert_enabled=env_bool("MAX_CONVERT_ENABLED", True),
-            max_convert_twd_amount=env_decimal("MAX_CONVERT_TWD_AMOUNT", "10"),
-            max_convert_usdt_amount=env_decimal("MAX_CONVERT_USDT_AMOUNT", "1"),
             live_trading=env_bool("LIVE_TRADING", False),
             live_confirmation=env_text("CONFIRM_LIVE_TRADING"),
             bitopro_enabled=env_bool("BITOPRO_ENABLED", True),
