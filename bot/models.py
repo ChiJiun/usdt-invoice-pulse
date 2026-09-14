@@ -39,11 +39,18 @@ class RunResult:
     mode: Literal["dry_run", "live"]
     occurred_at: str
     local_date: str
+    fee_target_twd: Decimal | None = None
+    estimated_fee_twd: Decimal | None = None
+    actual_fee: Decimal | None = None
+    fee_currency: str | None = None
 
     def to_public_dict(self, event_id: str) -> dict[str, object]:
         payload = asdict(self)
         payload["id"] = event_id
         payload["date"] = payload.pop("local_date")
-        for field in ("requested_usdt", "filled_usdt", "avg_price_twd"):
+        for field in (
+            "requested_usdt", "filled_usdt", "avg_price_twd", "fee_target_twd",
+            "estimated_fee_twd", "actual_fee",
+        ):
             payload[field] = decimal_text(payload[field])  # type: ignore[arg-type]
         return payload

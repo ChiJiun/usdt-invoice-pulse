@@ -6,11 +6,11 @@ import hmac
 import json
 import time
 import uuid
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from typing import Any
 
-from bot.http import ApiError
-from bot.trading import choose_trade_side, effective_target, quantity_step
+from bot.models import decimal_text
+from bot.trading import choose_trade_side, fee_target_quantity, quantity_step
 
 from .base import ExchangeAdapter
 
@@ -22,7 +22,9 @@ class MaxAdapter(ExchangeAdapter):
     accent = "#1aa679"
     minimum_usdt = Decimal("8")
     minimum_twd = Decimal("250")
-    planned_usdt = Decimal("8")
+    fee_target_setting = "max_fee_twd_target"
+    fee_rate_setting = "max_taker_fee_rate"
+    price_precision = 3
     base_url = "https://max-api.maicoin.com"
     market = "usdttwd"
 
@@ -54,6 +56,7 @@ class MaxAdapter(ExchangeAdapter):
         minimum_base = Decimal(str(market["min_base_amount"]))
         minimum_quote = Decimal(str(market["min_quote_amount"]))
         base_precision = int(market["base_unit_precision"])
+        self.price_precision = int(market.get("quote_unit_precision", 3))
         market_status = str(market.get("status", "active"))
         bid = Decimal(ticker["buy"])
         ask = Decimal(ticker["sell"])
@@ -133,11 +136,12 @@ class MaxAdapter(ExchangeAdapter):
 
     def _find_today_spot_trade(self) -> dict[str, Any] | None:
         path = "/api/v3/wallet/spot/trades"
-        start_of_day = self.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        current = self.now()
+        start_of_day = current.replace(hour=0, minute=0, second=0, microsecond=0)
         params = {
             "nonce": int(time.time() * 1000),
             "market": self.market,
-            "timestamp": int(start_of_day.timestamp() * 1000),
+            "timestamp": int(current.timestamp() * 1000),
             "order": "desc",
             "limit": 1000,
         }
@@ -155,7 +159,8 @@ class MaxAdapter(ExchangeAdapter):
             for trade in history
             if str(trade.get("market", "")).lower() == self.market
             and Decimal(str(trade.get("volume", "0"))) > 0
-            and int(trade.get("created_at", 0)) >= start_timestamp
+            and start_timestamp <= int(trade.get("created_at", 0))
+            <= int(current.timestamp() * 1000)
         ]
         return max(valid, key=lambda trade: int(trade.get("created_at", 0)), default=None)
 
@@ -175,6 +180,9 @@ class MaxAdapter(ExchangeAdapter):
             filled_usdt=filled,
             avg_price_twd=price or None,
             invoice_status="pending_confirmation",
+            actual_fee=(Decimal(str(trade["fee"]))
+                        if trade.get("fee") is not None and trade.get("fee_currency") else None),
+            fee_currency=trade.get("fee_currency"),
             message="官方 API 偵測到今日已有 USDT/TWD 現貨成交，已沿用紀錄並停止新增訂單",
             live=True,
         )
@@ -209,102 +217,59 @@ class MaxAdapter(ExchangeAdapter):
             live=True,
         )
 
-    def _run_convert_fallback(
-        self,
-        balances: list[dict[str, Any]],
-        *,
-        target: Decimal,
-        reference_price: Decimal,
-    ):
-        if not self.settings.max_convert_enabled:
-            return self.base_result(
-                status="skipped",
-                requested_usdt=target,
-                message="現貨資金不足，MAX 閃兌 fallback 未啟用；本日略過",
-                live=True,
-            )
-
-        available_twd = self._available_balance(balances, "twd")
-        amount = self.settings.max_invoice_twd_target
-        if available_twd < amount:
-            return self.base_result(
-                status="skipped",
-                requested_usdt=target,
-                message=(
-                    "現貨資金不足，且可用 TWD 未達 MAX 開票成交目標 "
-                    f"NT$ {amount.normalize():f}；本日略過"
-                ),
-                live=True,
-            )
-
-        from_currency = "twd"
-        to_currency = "usdt"
-        path = "/api/v3/convert"
-        body = {
-            "nonce": int(time.time() * 1000),
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-            "from_amount": str(amount),
-        }
-        try:
-            order = self.http.request_json(
-                "POST",
-                f"{self.base_url}{path}",
-                body=body,
-                headers=self._auth_headers(body, path),
-            )
-        except ApiError as exc:
-            return self.base_result(
-                status="failed",
-                side="buy",
-                execution_type="convert",
-                requested_usdt=amount / reference_price,
-                message=f"現貨資金不足，MAX NT$ {amount.normalize():f} 閃兌未成功：{exc}",
-                live=True,
-            )
-        if not isinstance(order, dict):
-            raise RuntimeError("MAX 閃兌回應格式不符預期")
-        return self._convert_result(
-            order,
-            message=(
-                f"現貨資金不足，已改用 MAX NT$ {amount.normalize():f} 閃兌成交；"
-                "發票待實際開立確認"
-            ),
+    def _order_fees(self, client_oid: str) -> tuple[Decimal | None, str | None]:
+        path = "/api/v3/order/trades"
+        params = {"nonce": int(time.time() * 1000), "client_oid": client_oid}
+        trades = self.http.request_json(
+            "GET", f"{self.base_url}{path}", params=params,
+            headers=self._auth_headers(params, path),
         )
+        if not isinstance(trades, list):
+            raise RuntimeError("MAX 訂單費用回應格式不符預期")
+        if not trades or not all(
+            isinstance(row, dict) and row.get("fee") is not None and row.get("fee_currency")
+            for row in trades
+        ):
+            return None, None
+        currencies = {str(row["fee_currency"]).lower() for row in trades}
+        if len(currencies) != 1:
+            return None, None
+        fee = sum((Decimal(str(row["fee"])) for row in trades), Decimal("0"))
+        return fee, currencies.pop()
 
     def run(self, *, live: bool):
-        bid, ask, minimum_base, minimum_quote, base_precision, market_status = (
-            self._snapshot()
+        _, ask, minimum_base, minimum_quote, base_precision, market_status = self._snapshot()
+        price_step = quantity_step(self.price_precision)
+        buy_limit = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
+            price_step, rounding=ROUND_UP
         )
-        target = effective_target(
-            self.settings.target_usdt,
-            minimum_base,
-            max(minimum_quote, self.settings.max_invoice_twd_target),
-            bid,
-            quantity_step(base_precision),
+        price_floor = (ask * (Decimal("1") - self.settings.price_slippage)).quantize(
+            price_step, rounding=ROUND_DOWN
+        )
+        target = fee_target_quantity(
+            fee_twd=self.fee_target_twd,
+            fee_rate=self.fee_rate,
+            minimum_base=minimum_base,
+            minimum_quote=minimum_quote,
+            price_floor_twd=price_floor,
+            step=quantity_step(base_precision),
         )
         self.planned_usdt = target
         if market_status != "active":
             return self.base_result(
-                status="skipped",
-                requested_usdt=target,
-                avg_price_twd=ask,
-                message=f"USDT/TWD 市場狀態為 {market_status}，本日略過",
-                live=live,
+                status="skipped", requested_usdt=target, avg_price_twd=ask,
+                message=f"USDT/TWD 市場狀態為 {market_status}，本日略過", live=live,
             )
 
         if not live:
             return self.base_result(
-                status="simulated",
-                side="buy",
-                execution_type="spot",
-                requested_usdt=target,
-                filled_usdt=target,
-                avg_price_twd=ask,
+                status="simulated", side="buy", execution_type="spot",
+                requested_usdt=target, filled_usdt=target, avg_price_twd=ask,
+                estimated_fee_twd=target * ask * self.fee_rate,
                 invoice_status="not_applicable",
                 message=(
-                    "已自動提高至 MAX 開票成交目標；正式模式優先現貨，"
-                    "買入緩衝不足但仍有目標額 TWD 時可改試閃兌"
+                    f"依 NT$ {self.fee_target_twd.normalize():f} 手續費目標換算買入量；"
+                    "正式模式只在 TWD 足夠時買入，不賣出、不閃兌；不保證開票"
                 ),
                 live=False,
             )
@@ -313,6 +278,8 @@ class MaxAdapter(ExchangeAdapter):
         existing_spot = self._find_today_spot_trade()
         if existing_spot:
             return self._spot_trade_result(existing_spot)
+        # Read historical converts for duplicate protection only. This adapter
+        # must never submit a convert or sell under the new buy-only policy.
         existing_convert = self._find_today_convert()
         if existing_convert:
             return self._convert_result(
@@ -322,98 +289,89 @@ class MaxAdapter(ExchangeAdapter):
 
         balances = self._account_balances()
         available_twd = self._available_balance(balances, "twd")
-        available_usdt = self._available_balance(balances, "usdt")
         side = choose_trade_side(
-            available_twd=available_twd,
-            available_usdt=available_usdt,
-            target_usdt=target,
-            buy_price_twd=ask,
-            buy_buffer_rate=(
-                self.settings.price_slippage + self.settings.max_taker_fee_rate
-            ),
-            usdt_reserve=self.settings.usdt_reserve,
+            available_twd=available_twd, available_usdt=Decimal("0"),
+            target_usdt=target, buy_price_twd=buy_limit,
+            buy_buffer_rate=self.fee_rate, allow_sell=False,
         )
         if side == "none":
-            return self._run_convert_fallback(
-                balances,
-                target=target,
-                reference_price=ask,
+            required = target * buy_limit * (Decimal("1") + self.fee_rate)
+            return self.base_result(
+                status="skipped", requested_usdt=target,
+                message=(
+                    f"MAX 只買入：可用 TWD {available_twd.normalize():f} 元，"
+                    f"計畫需約 {required.quantize(Decimal('0.01'), rounding=ROUND_UP):f} 元"
+                    "（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌"
+                ),
+                live=True,
             )
 
         path = "/api/v3/wallet/spot/order"
         client_oid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"max-{self.now().date()}"))
         body = {
-            "nonce": int(time.time() * 1000),
-            "market": self.market,
-            "side": side,
-            "volume": str(target),
-            "ord_type": "market",
-            "client_oid": client_oid,
+            "nonce": int(time.time() * 1000), "market": self.market,
+            "side": "buy", "volume": str(target), "price": str(buy_limit),
+            "ord_type": "ioc_limit", "client_oid": client_oid,
         }
-        created = self.http.request_json(
-            "POST",
-            f"{self.base_url}{path}",
-            body=body,
+        detail = self.http.request_json(
+            "POST", f"{self.base_url}{path}", body=body,
             headers=self._auth_headers(body, path),
         )
-        detail = created
         detail_path = "/api/v3/order"
         for _ in range(6):
-            if detail.get("state") == "done":
+            if detail.get("state") in {"done", "cancel"}:
                 break
             time.sleep(2)
             params = {"nonce": int(time.time() * 1000), "client_oid": client_oid}
             detail = self.http.request_json(
-                "GET",
-                f"{self.base_url}{detail_path}",
-                params=params,
+                "GET", f"{self.base_url}{detail_path}", params=params,
                 headers=self._auth_headers(params, detail_path),
             )
 
         executed = Decimal(detail.get("executed_volume", "0"))
-        avg_price = Decimal(detail.get("avg_price", "0")) or ask
+        average = Decimal(detail.get("avg_price", "0")) or ask
         status = "filled" if executed >= target else "partial" if executed > 0 else "failed"
         message = (
-            "訂單已全數成交；等待電子發票開立通知"
+            "買入已全數成交；發票待實際開立確認"
             if status == "filled"
-            else "訂單未完整成交，請至 MAX 檢查訂單狀態"
+            else "IOC 買單未完整成交；未成交部分不留掛單、不自動補單，請至 MAX 核對"
         )
+        estimated_fee = executed * average * self.fee_rate
+        if executed > 0 and estimated_fee < self.fee_target_twd:
+            message += "；預估費用未達目標"
+        actual_fee = None
+        fee_currency = None
+        if executed > 0:
+            # Fees live on the trade endpoint, not the order response. A fee
+            # read failure must not hide a successful fill or trigger a retry.
+            try:
+                actual_fee, fee_currency = self._order_fees(client_oid)
+            except Exception:
+                message += "；實收費用讀取未完成，請至官方成交紀錄確認"
         return self.base_result(
-            status=status,
-            side=side,
-            execution_type="spot",
-            requested_usdt=target,
-            filled_usdt=executed,
-            avg_price_twd=avg_price if executed else None,
-            invoice_status=(
-                "pending_confirmation"
-                if executed
-                else "not_applicable"
-            ),
-            message=f"{'買入' if side == 'buy' else '賣出'}：{message}",
-            live=True,
+            status=status, side="buy", execution_type="spot", requested_usdt=target,
+            filled_usdt=executed, avg_price_twd=average if executed else None,
+            estimated_fee_twd=estimated_fee if executed else None,
+            actual_fee=actual_fee, fee_currency=fee_currency,
+            invoice_status="pending_confirmation" if executed else "not_applicable",
+            message=message, live=True,
         )
 
     def public_status(self, today_status: str = "waiting") -> dict[str, object]:
         return {
-            "id": self.id,
-            "name": self.name,
-            "short_name": self.short_name,
-            "accent": self.accent,
-            "minimum_usdt": str(self.minimum_usdt),
+            "id": self.id, "name": self.name, "short_name": self.short_name,
+            "accent": self.accent, "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": str(self.minimum_twd),
-            "invoice_target_twd": str(self.settings.max_invoice_twd_target),
-            "planned_usdt": str(self.planned_usdt),
-            "convert_supported": True,
-            "target_eligible": (
-                self.planned_usdt >= self.minimum_usdt
-                and self.planned_usdt > Decimal("0")
-            ),
+            "fee_target_twd": decimal_text(self.fee_target_twd),
+            "fee_rate": decimal_text(self.fee_rate),
+            "turnover_target_twd": decimal_text(self.turnover_target_twd),
+            "trade_policy": "buy_only",
+            "planned_usdt": decimal_text(self.planned_usdt),
+            "convert_supported": False,
+            "target_eligible": bool(self.planned_usdt and self.planned_usdt >= self.minimum_usdt),
             "today_status": today_status,
             "note": (
-                "只做 USDT/TWD；目前最低 "
-                f"{self.minimum_usdt.normalize():f} USDT／"
-                f"新台幣 {self.minimum_twd.normalize():f} 元；程式以 "
-                f"NT$ {self.settings.max_invoice_twd_target.normalize():f} 為開票成交目標。"
+                f"只買 USDT/TWD；以 NT$ {self.fee_target_twd.normalize():f} 預估手續費為目標，"
+                "TWD 不足就略過；不賣 USDT、不閃兌、不保證開票。"
             ),
         }

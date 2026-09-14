@@ -20,10 +20,10 @@ const fallbackData: DashboardData = {
   local_date: "—",
   timezone: "Asia/Taipei",
   mode: "dry_run",
-  target_usdt: "1",
+  strategy: "fee_target",
   summary: {
     exchanges_total: 2,
-    target_eligible: 2,
+    target_eligible: 0,
     pending_invoice_checks: 0,
     total_filled_usdt: "0",
     today_trades: 0,
@@ -108,9 +108,12 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
     .map((exchange) => ({
       ...exchange,
       minimum_twd: exchange.minimum_twd ?? null,
-      invoice_target_twd: exchange.invoice_target_twd ?? null,
+      fee_target_twd: exchange.fee_target_twd ?? null,
+      fee_rate: exchange.fee_rate ?? null,
+      turnover_target_twd: exchange.turnover_target_twd ?? null,
+      trade_policy: exchange.trade_policy ?? (exchange.id === "max" ? "buy_only" : "buy_then_sell"),
       trading_enabled: exchange.trading_enabled ?? true,
-      planned_usdt: exchange.planned_usdt ?? exchange.minimum_usdt,
+      planned_usdt: exchange.planned_usdt ?? null,
       convert_supported: exchange.convert_supported ?? false,
     }));
   const events = payload.events
@@ -120,6 +123,10 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       side: event.side ?? (event.mode === "dry_run" ? "buy" : "none"),
       execution_type:
         event.execution_type ?? (event.status === "skipped" ? "none" : "spot"),
+      fee_target_twd: event.fee_target_twd ?? null,
+      estimated_fee_twd: event.estimated_fee_twd ?? null,
+      actual_fee: event.actual_fee ?? null,
+      fee_currency: event.fee_currency ?? null,
     }));
   const invoiceRecords = (payload.invoice_records ?? []).filter((invoice) =>
     SUPPORTED_EXCHANGE_IDS.has(invoice.exchange.toLowerCase()),
@@ -183,23 +190,35 @@ function ExchangeCard({
           {exchange.minimum_twd ? ` · NT$ ${formatNumber(exchange.minimum_twd, 0)}` : ""}
         </strong>
       </div>
-      {exchange.invoice_target_twd && (
+      {exchange.fee_target_twd && (
         <div className="limit-row">
-          <span>開票成交目標</span>
-          <strong>NT$ {formatNumber(exchange.invoice_target_twd, 0)}</strong>
+          <span>預估手續費目標</span>
+          <strong>NT$ {formatNumber(exchange.fee_target_twd, 4)}</strong>
+        </div>
+      )}
+      {exchange.turnover_target_twd && (
+        <div className="limit-row">
+          <span>換算成交額（未含緩衝）</span>
+          <strong>約 NT$ {formatNumber(exchange.turnover_target_twd, 2)}</strong>
+        </div>
+      )}
+      {exchange.fee_rate && (
+        <div className="limit-row">
+          <span>設定有效費率</span>
+          <strong>{formatNumber(Number(exchange.fee_rate) * 100, 4)}%</strong>
         </div>
       )}
       <p className="exchange-note">{exchange.note}</p>
       <div className="capability-line">
-        <span>{exchange.convert_supported ? "現貨＋閃兌 fallback" : "現貨交易"}</span>
-        <small>{exchange.convert_supported ? "官方 API 支援" : "不使用非公開閃兌端點"}</small>
+        <span>{exchange.trade_policy === "buy_only" ? "只買入 · TWD 不足略過" : "TWD 足夠買 · 否則賣 USDT"}</span>
+        <small>每日最多一次，不補單</small>
       </div>
       <div className="eligibility-line">
         <span className={exchange.target_eligible ? "tick tick--yes" : "tick"} aria-hidden="true" />
         {!exchange.trading_enabled ? (
           <>僅保留成交與發票紀錄，不再自動下單</>
-        ) : exchange.invoice_target_twd ? (
-          <>執行時依即時行情換算，成交目標至少 NT$ {formatNumber(exchange.invoice_target_twd, 0)}</>
+        ) : exchange.planned_usdt === null ? (
+          <>等待下次行情換算計畫量；費用與發票均非保證</>
         ) : (
           <>
             本次計畫 {formatNumber(exchange.planned_usdt, 4)} USDT
@@ -232,6 +251,18 @@ function EventRow({ event }: { event: RunEvent }) {
         <div className="table-primary">{formatNumber(event.filled_usdt, 4)} U</div>
         <div className="table-secondary">
           {event.avg_price_twd ? `@ NT$ ${formatNumber(event.avg_price_twd, 3)}` : "—"}
+        </div>
+      </td>
+      <td className="numeric">
+        <div className="table-primary">
+          {event.actual_fee !== null && event.fee_currency
+            ? `實收 ${event.fee_currency === "twd" ? "NT$" : event.fee_currency.toUpperCase()} ${formatNumber(event.actual_fee, 8)}`
+            : "實收待核對"}
+        </div>
+        <div className="table-secondary">
+          {event.estimated_fee_twd !== null
+            ? `預估 NT$ ${formatNumber(event.estimated_fee_twd, 4)}`
+            : "未保存估算"}
         </div>
       </td>
       <td>
@@ -292,6 +323,9 @@ function DailyPulseRow({ row }: { row: DailyExchangeStatus }) {
           {invoice.status === "confirmed" ? invoiceDetail || "已確認開立" : invoiceLabels[invoice.status]}
         </strong>
         <p>{invoice.note}</p>
+        {invoice.amount_twd !== null && Number(invoice.amount_twd) === 0 && (
+          <small>已開立 0 元發票，但不可兌獎。</small>
+        )}
         <div className="daily-links">
           {invoice.detail_url && (
             <a href={invoice.detail_url} target="_blank" rel="noreferrer">查看明細 ↗</a>
@@ -323,6 +357,9 @@ function InvoiceRecordCard({ record }: { record: InvoiceRecord }) {
         {record.amount_twd ? ` · NT$ ${formatNumber(record.amount_twd, 2)}` : ""}
       </p>
       <small>{record.note ?? (record.checked_at ? `最後確認 ${formatTime(record.checked_at)}` : "尚無備註")}</small>
+      {record.amount_twd !== null && Number(record.amount_twd) === 0 && (
+        <small>0 元發票不可兌獎。</small>
+      )}
       {record.detail_url && (
         <a href={record.detail_url} target="_blank" rel="noreferrer">查看安全明細 ↗</a>
       )}
@@ -397,7 +434,7 @@ function App() {
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
             <h1>今天有沒有成交，<br /><em>昨天有沒有開票。</em></h1>
             <p className="hero-lead">
-              啟用的平台每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT。MAX 已停止每日交易，保留單次測試與成交歷史；發票待實際開立確認。
+              只做 USDT/TWD。BitoPro 以約 0.5 元費用為目標，依餘額買入或賣出；MAX 以約 1 元為目標，只在 TWD 足夠時買入。每日最多一次，成交與開票分開核對。
             </p>
           </div>
 
@@ -411,7 +448,7 @@ function App() {
             <div>
               <p className="eyebrow">TODAY'S READINESS</p>
               <h2>{readinessTitle}</h2>
-              <p>設定下限為 {formatNumber(data.target_usdt, 4)} USDT；停止每日交易的平台只保留紀錄，不會自動下單。</p>
+              <p>依各家目標費用、有效費率及即時行情換算數量；停用的平台不會自動下單。費用達標不等於已取得可兌獎發票。</p>
             </div>
           </aside>
         </div>
@@ -475,7 +512,7 @@ function App() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">EXCHANGE CHECK</p>
-              <h2>兩家可程式交易所，各自套用最低量</h2>
+              <h2>按目標費用換算，各自決定方向</h2>
             </div>
             <p>Dashboard 只顯示具備官方私人下單 API 的平台。</p>
           </div>
@@ -525,7 +562,7 @@ function App() {
             <div className="health-list">
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>安全鎖</strong><small>預設不會真實下單</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>雙層重複防護</strong><small>repository 紀錄＋官方當日成交 API</small></p></div>
-              <div><span className="health-icon health-icon--ok">✓</span><p><strong>低額成交策略</strong><small>現貨優先；MAX 資金不足時嘗試閃兌</small></p></div>
+              <div><span className="health-icon health-icon--ok">✓</span><p><strong>手續費目標策略</strong><small>BitoPro 買或賣；MAX 只買入，不閃兌</small></p></div>
               <div><span className="health-icon health-icon--ok">✓</span><p><strong>公開資料最小化</strong><small>不含憑證與訂單編號</small></p></div>
               <div><span className="health-icon">i</span><p><strong>排程時間</strong><small>每日 09:17（台北時間）</small></p></div>
               <div><span className="health-icon">↗</span><p><strong><a href={DEPLOYMENT_GUIDE_URL} target="_blank" rel="noreferrer">完整部署手冊</a></strong><small>Pages、Secrets、驗證與首單</small></p></div>
@@ -555,13 +592,13 @@ function App() {
           <div className="table-wrap">
             <table>
               <thead>
-                <tr><th>交易所</th><th>結果</th><th>方向</th><th className="numeric">成交</th><th>管道／發票</th><th>說明</th></tr>
+                <tr><th>交易所</th><th>結果</th><th>方向</th><th className="numeric">成交</th><th className="numeric">手續費／非發票</th><th>管道／發票</th><th>說明</th></tr>
               </thead>
               <tbody>
                 {visibleEvents.length ? (
                   visibleEvents.slice(0, 12).map((event) => <EventRow key={event.id} event={event} />)
                 ) : (
-                  <tr><td colSpan={6} className="empty-state">這個篩選還沒有紀錄。</td></tr>
+                  <tr><td colSpan={7} className="empty-state">這個篩選還沒有紀錄。</td></tr>
                 )}
               </tbody>
             </table>
@@ -585,7 +622,7 @@ function App() {
             </div>
           ) : (
             <div className="empty-state invoice-empty">
-              尚未加入發票確認紀錄；成交後可更新 data/invoice-records.json，或依信箱服務加入唯讀 OAuth 核對。
+              尚未加入發票確認紀錄；成交後請由載具／郵件確認，再更新 data/invoice-records.json。
             </div>
           )}
         </section>

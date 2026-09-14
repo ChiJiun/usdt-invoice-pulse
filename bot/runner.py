@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import sys
-from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -13,7 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from bot.config import Settings, env_text
+from bot.config import Settings
 from bot.exchanges import BitoProAdapter, MaxAdapter
 from bot.models import RunResult, decimal_text
 
@@ -93,7 +92,7 @@ def make_duplicate_result(adapter: Any, record: dict[str, Any]) -> RunResult:
     status = "partial" if record.get("status") == "partial" else "filled"
     filled = Decimal(str(record.get("filled_usdt", "0")))
     average = record.get("avg_price_twd")
-    return adapter.base_result(
+    result = adapter.base_result(
         status=status,
         side=side,
         execution_type=execution_type,
@@ -101,9 +100,17 @@ def make_duplicate_result(adapter: Any, record: dict[str, Any]) -> RunResult:
         filled_usdt=filled,
         avg_price_twd=Decimal(str(average)) if average else None,
         invoice_status="pending_confirmation",
+        estimated_fee_twd=(Decimal(str(record["estimated_fee_twd"]))
+                           if record.get("estimated_fee_twd") is not None else None),
+        actual_fee=(Decimal(str(record["actual_fee"]))
+                    if record.get("actual_fee") is not None else None),
+        fee_currency=record.get("fee_currency"),
         message="repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
         live=True,
     )
+    result.fee_target_twd = (Decimal(str(record["fee_target_twd"]))
+                             if record.get("fee_target_twd") is not None else None)
+    return result
 
 
 def safe_public_url(value: Any) -> str | None:
@@ -169,7 +176,8 @@ def normalize_invoice_records(
         if amount is not None and amount != "":
             try:
                 parsed_amount = Decimal(str(amount))
-                amount_text = decimal_text(parsed_amount) if parsed_amount >= 0 else None
+                amount_text = (decimal_text(parsed_amount)
+                               if parsed_amount.is_finite() and parsed_amount >= 0 else None)
             except Exception:
                 amount_text = None
         records.append(
@@ -221,12 +229,15 @@ def refreshed_exchange_status(adapter: Any, existing: dict[str, Any]) -> dict[st
     for field in (
         "minimum_usdt",
         "minimum_twd",
-        "planned_usdt",
-        "target_eligible",
-        "today_status",
     ):
         if field in existing:
             status[field] = existing[field]
+    # An old 1-USDT plan is not a plan for the new fee-based strategy. Only
+    # retain quantities when the settings that produced them still match.
+    if all(existing.get(field) == status.get(field) for field in ("fee_target_twd", "fee_rate")):
+        for field in ("planned_usdt", "target_eligible"):
+            if field in existing:
+                status[field] = existing[field]
     return status
 
 
@@ -316,30 +327,13 @@ def exception_result(adapter: Any, live: bool, exc: Exception) -> RunResult:
     )
 
 
-def max_test_settings(settings: Settings, today: str) -> Settings:
-    """Allow one dated spot test only while ordinary MAX trading is paused."""
-    settings.assert_live_authorized()
-    if settings.max_enabled:
-        raise ValueError("MAX 單次測試前必須先設定 MAX_ENABLED=false")
-    if env_text("MAX_TEST_DATE") != today:
-        raise ValueError("MAX_TEST_DATE 必須等於今日台北日期；已拒絕過期或未授權測試")
-    return replace(
-        settings,
-        target_usdt=Decimal("1"),
-        max_invoice_twd_target=Decimal("625"),
-        max_convert_enabled=False,
-    )
-
-
 def run_all(
-    settings: Settings, *, live: bool, refresh_only: bool = False, max_test: bool = False
+    settings: Settings, *, live: bool, refresh_only: bool = False
 ) -> dict[str, Any]:
     current = datetime.now(TAIPEI)
     today = current.date().isoformat()
-    if max_test:
-        if not live or refresh_only:
-            raise ValueError("MAX 單次測試只能使用正式下單模式")
-        settings = max_test_settings(settings, today)
+    if live:
+        settings.assert_live_authorized()
     state = read_json(settings.state_path, {"version": 1, "live_runs": {}})
     existing_dashboard = read_json(settings.dashboard_path, {"events": []})
     raw_invoice_records = read_json(settings.invoice_records_path, [])
@@ -360,18 +354,7 @@ def run_all(
     results: list[RunResult] = []
     if not refresh_only:
         for adapter in adapters:
-            if max_test:
-                if adapter.id != "max" or today in state.get("max_test_attempts", {}):
-                    continue
-                state.setdefault("max_test_attempts", {})[today] = {
-                    "started_at": current.isoformat(timespec="seconds"),
-                    "target_twd": "625",
-                    "status": "started",
-                }
-                # Reserve before any request; exchange history is the backstop
-                # if a runner dies before GitHub can commit this state.
-                write_json(settings.state_path, state)
-            elif not trading_enabled[adapter.id]:
+            if not trading_enabled[adapter.id]:
                 continue
             known_record = existing_live_record(
                 state, existing_dashboard, today, adapter.id
@@ -384,16 +367,6 @@ def run_all(
                 except Exception as exc:  # keep one exchange failure from hiding other results
                     result = exception_result(adapter, live, exc)
             results.append(result)
-            if max_test:
-                state["max_test_attempts"][today].update(
-                    status=result.status,
-                    filled_usdt=decimal_text(result.filled_usdt),
-                    avg_price_twd=decimal_text(result.avg_price_twd),
-                    turnover_twd=decimal_text(
-                        result.filled_usdt * result.avg_price_twd
-                        if result.avg_price_twd is not None else Decimal("0")
-                    ),
-                )
 
             if live and result.status in {"filled", "partial"}:
                 state.setdefault("live_runs", {}).setdefault(today, {})[adapter.id] = {
@@ -402,6 +375,10 @@ def run_all(
                     "execution_type": result.execution_type,
                     "filled_usdt": decimal_text(result.filled_usdt),
                     "avg_price_twd": decimal_text(result.avg_price_twd),
+                    "fee_target_twd": decimal_text(result.fee_target_twd),
+                    "estimated_fee_twd": decimal_text(result.estimated_fee_twd),
+                    "actual_fee": decimal_text(result.actual_fee),
+                    "fee_currency": result.fee_currency,
                 }
 
     new_events = [result.to_public_dict(event_id(result)) for result in results]
@@ -437,11 +414,13 @@ def run_all(
         for adapter in adapters
     ]
     for status in exchange_statuses:
+        today_event = preferred_event(events, today, str(status["id"]))
+        status["today_status"] = today_event.get("status", "waiting") if today_event else "waiting"
         enabled = trading_enabled[str(status["id"])]
         status["trading_enabled"] = enabled
         if not enabled:
             status["target_eligible"] = False
-            status["note"] = "已停止每日交易；保留成交歷史與發票確認紀錄。"
+            status["note"] = "已停止每日交易；保留歷史紀錄。" + str(status["note"])
     daily_status = build_daily_status(adapters, events, invoice_records, today)
 
     filled_events = [
@@ -464,7 +443,7 @@ def run_all(
             if live
             else "dry_run"
         ),
-        "target_usdt": decimal_text(settings.target_usdt),
+        "strategy": "fee_target",
         "summary": {
             "exchanges_total": len(exchange_statuses),
             "target_eligible": sum(
@@ -504,9 +483,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--dry-run", action="store_true", help="只模擬，不送單")
     mode.add_argument("--live", action="store_true", help="允許正式下單")
     mode.add_argument(
-        "--max-test-625", action="store_true", help="限定 MAX_TEST_DATE 的 MAX 625 元單次現貨測試"
-    )
-    mode.add_argument(
         "--refresh", action="store_true", help="只重建公開資料，不呼叫交易所 API"
     )
     return parser.parse_args(argv)
@@ -516,11 +492,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         settings = Settings.from_env()
-        if args.live or args.max_test_625:
+        if args.live:
             settings.assert_live_authorized()
         dashboard = run_all(
-            settings, live=args.live or args.max_test_625, refresh_only=args.refresh,
-            max_test=args.max_test_625,
+            settings, live=args.live, refresh_only=args.refresh,
         )
     except ValueError as exc:
         print(f"設定錯誤：{exc}", file=sys.stderr)
@@ -531,11 +506,6 @@ def main(argv: list[str] | None = None) -> int:
         f"完成：模式={dashboard['mode']} 可執行={summary['target_eligible']}/"
         f"{summary['exchanges_total']} 今日={dashboard['local_date']}"
     )
-    if args.max_test_625:
-        record = read_json(settings.state_path, {}).get("max_test_attempts", {}).get(
-            dashboard["local_date"], {}
-        )
-        print(f"MAX 單次測試結果：{record.get('status', 'unknown')}；每日交易維持停用")
     return 0
 
 

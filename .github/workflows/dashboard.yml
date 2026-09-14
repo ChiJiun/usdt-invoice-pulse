@@ -17,7 +17,6 @@ on:
           - validate
           - dry-run
           - live
-          - max-test-625
 
 concurrency:
   group: daily-usdt-and-pages
@@ -33,15 +32,15 @@ jobs:
     name: Build, update data, and upload Pages artifact
     runs-on: ubuntu-latest
     env:
-      ORDER_USDT: ${{ vars.ORDER_USDT || '1' }}
-      USDT_RESERVE: ${{ vars.USDT_RESERVE || '0' }}
-      MAX_INVOICE_TWD_TARGET: ${{ vars.MAX_INVOICE_TWD_TARGET || '625' }}
-      MAX_CONVERT_ENABLED: ${{ vars.MAX_CONVERT_ENABLED || 'true' }}
+      BITOPRO_FEE_TWD_TARGET: ${{ vars.BITOPRO_FEE_TWD_TARGET || '0.5' }}
+      BITOPRO_TAKER_FEE_RATE: ${{ vars.BITOPRO_TAKER_FEE_RATE || '0.002' }}
+      MAX_FEE_TWD_TARGET: ${{ vars.MAX_FEE_TWD_TARGET || '1' }}
+      MAX_TAKER_FEE_RATE: ${{ vars.MAX_TAKER_FEE_RATE || '0.0016' }}
+      ORDER_PRICE_SLIPPAGE: ${{ vars.ORDER_PRICE_SLIPPAGE || '0.005' }}
       LIVE_TRADING: ${{ vars.LIVE_TRADING || 'false' }}
       CONFIRM_LIVE_TRADING: ${{ secrets.CONFIRM_LIVE_TRADING }}
       BITOPRO_ENABLED: ${{ vars.BITOPRO_ENABLED || 'true' }}
       MAX_ENABLED: ${{ vars.MAX_ENABLED || 'false' }}
-      MAX_TEST_DATE: ${{ vars.MAX_TEST_DATE }}
       BITOPRO_EMAIL: ${{ secrets.BITOPRO_EMAIL }}
       BITOPRO_API_KEY: ${{ secrets.BITOPRO_API_KEY }}
       BITOPRO_API_SECRET: ${{ secrets.BITOPRO_API_SECRET }}
@@ -68,8 +67,6 @@ jobs:
             python -m bot.runner --refresh
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "validate" ]]; then
             python -m bot.verify
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "max-test-625" ]]; then
-            python -m bot.runner --max-test-625
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.mode }}" == "live" && "$LIVE_TRADING" != "true" ]]; then
             echo "LIVE_TRADING 尚未開啟，已拒絕真實下單。" >&2
             exit 2

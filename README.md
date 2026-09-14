@@ -1,229 +1,159 @@
-# 一塊日常：每日 USDT/TWD 成交與發票 Dashboard
+# 一塊日常：USDT/TWD 手續費目標與發票紀錄
 
-使用 GitHub Actions 每日執行啟用平台的低額 `USDT/TWD` 交易，並把去識別化的成交與發票確認狀態發布到 GitHub Pages。目前 BitoPro 照常執行，MAX 停止每日交易，只保留成交歷史與發票紀錄。
+GitHub Actions 每日檢查啟用交易所的成交紀錄，必要時才下單，並將去識別摘要發布至 GitHub Pages。下單金額依「目標手續費 ÷ 設定有效費率」計算，不再固定交易 1 USDT。
 
-- Repository：<https://github.com/ChiJiun/usdt-invoice-pulse>
-- Dashboard：<https://chijiun.github.io/usdt-invoice-pulse/>
-- 預設安全狀態：`LIVE_TRADING=false`，只模擬、不會下真實訂單。
+- Repository：[ChiJiun/usdt-invoice-pulse](https://github.com/ChiJiun/usdt-invoice-pulse)
+- Dashboard：[一塊日常](https://chijiun.github.io/usdt-invoice-pulse/)
+- 預設 `LIVE_TRADING=false`，不送真實訂單；MAX 預設維持停用。
 
-> 只納入具有官方私人下單 API、可以程式安全執行的平台。目前為 BitoPro 與 MAX；不使用帳密模擬登入、瀏覽器腳本或未公開下單端點。
+## 最新交易策略
 
-## 支援範圍
-
-| 交易所 | `ORDER_USDT=1` 時 | 資金不足時 | 發票狀態 |
+| 交易所 | 預估費用目標 | 未含價格緩衝的成交額 | 買賣規則 |
 | --- | --- | --- | --- |
-| BitoPro | 最低約 1 USDT 限價現貨 | TWD 不足則改賣 USDT；兩者都不足就略過 | 成交後約兩天內通知，API 不含發票明細 |
-| MAX | 預設停用；625 元單次測試只交易現貨，不用閃兌 | TWD 不足則改賣足額 USDT；兩者不足就略過，不自動重試 | 約 1–3 個工作天開立，API 不含發票明細 |
+| BitoPro | NT$0.5 | 費率 0.2% 時約 NT$250 | TWD 足夠就買 USDT；否則 USDT 足夠就賣；兩者不足略過 |
+| MAX | NT$1 | 費率 0.16% 時約 NT$625 | 只在 TWD 足夠時買 USDT；不足就略過，絕不自動賣出或閃兌 |
 
-門檻會在每次交易執行時從官方公開 API 重新讀取；`ORDER_USDT` 是設定下限，不是固定 1 USDT，也不是上限。MAX 的 `MAX_INVOICE_TWD_TARGET=625` 是成交名目金額目標，與官方最低下單額 NT$250 分開處理。
+只交易 `USDT/TWD`，每次執行每家最多送一張新單，同日已有成交或既有自動訂單就不再新增；不在同一次執行中反覆買賣。BitoPro 的「來回」是不同日依餘額買或賣，不是強制逐日交替，也不對敲自己的訂單。
 
-MAX 一般 taker 費率為 0.16%，NT$625 × 0.16% = NT$1；原本 NT$313 的目標只是無折扣時手續費約 0.5 元的臨界估算，不是保守保證值。發票依實收手續費每日彙總及四捨五入計算，VIP、推薦碼或 MAX Token 折扣會影響實收金額；成交不等於已確認開票。官方說明：[交易手續費](https://support.maicoin.com/en/support/solutions/articles/32000026028-what-are-the-trading-fees-on-max-)、[MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074-max-%E6%9C%83%E9%96%8B%E7%99%BC%E7%A5%A8%E5%97%8E-%E7%99%BC%E7%A5%A8%E5%85%A7%E5%AE%B9%E6%98%AF%E4%BB%80%E9%BA%BC-)。
+HOYA BIT 尚未找到可供會員使用的官方私人下單 API 文件；官方舊 FAQ 表示正在規劃 API，因此目前不串接、不顯示於 Dashboard。若取得正式文件與會員 API Key 申請方式，才能安全加入；不使用帳密模擬登入或未公開端點。[HOYA BIT API 說明](https://support.hoyabit.com/activity/%E6%9C%89%E6%87%89%E7%94%A8%E7%A8%8B%E5%BC%8F%E4%BB%8B%E9%9D%A2-api-%E5%97%8E%EF%BC%9F/)
 
-### MAX 625 元單次測試
+### 金額如何換算
 
-1. 保持 `MAX_ENABLED=false`，一般 schedule、live、dry-run 都不執行 MAX；BitoPro 不受影響。
-2. 只有明確授權測試時，才設定 Variable `MAX_TEST_DATE` 為當日台北日期（`YYYY-MM-DD`）。`LIVE_TRADING=true` 與確認鎖仍是必要條件。
-3. 手動執行 workflow，mode 選 `max-test-625`：只測試 MAX 現貨，計畫成交額至少 NT$625；不呼叫 BitoPro、不做閃兌、不自動加碼或重試。
-4. 今日已有成交就沿用，不補單；一次嘗試會保存至 `data/state.json` 的 `max_test_attempts`，同日重跑不再嘗試，非授權日期也拒絕執行。
-5. 測試後刪除 `MAX_TEST_DATE`，MAX 維持停用；成交與發票紀錄不會因停用被刪除。發票需於 1–3 個工作天後由 Email／載具人工確認。
+1. 讀取官方 USDT/TWD 行情、最低量與下單精度。
+2. 計算成交額目標：`目標費用 TWD ÷ 有效費率`。
+3. 以保守參考價格換算 USDT，再套用官方最低量／最低成交額，數量向上取整至合法精度。
+4. 買入餘額檢查使用「計畫量 × 買入價格上限 × (1 + 費率)」，包含價格及費用緩衝。
+5. BitoPro 使用限價單，短暫等待後取消未成交部分；MAX 使用 `ioc_limit` 買單，未成交部分立即取消。
+6. 保存成交量、均價、預估費用與可取得的實收費用。部分成交不補單，費用不足也不降額重試。
+
+BitoPro 保守參考價為買一價扣除價格緩衝後的賣出限價；MAX 為賣一價扣除價格緩衝。這只能提高預估費用達標的機會，不能保證買入成交價、實收費用或發票金額。
+
+因此 MAX 有 NT$625 不一定足夠：還要支付數量向上取整、價格及費用緩衝；不足時 Dashboard 會顯示實際可用 TWD 與計畫需求。
+
+### 費率與發票不能混為一談
+
+- 預設採一般 taker 費率：BitoPro 0.2%、MAX 0.16%。VIP、推薦／代幣折扣可能改變費率，請設定符合自己帳戶的有效費率。
+- 有效費率由環境變數提供，程式不會自動偵測會員折扣；費率填高會讓成交額不足，填低則會交易較多本金。
+- 若有代幣抵扣，原幣手續費不一定可算進 TWD 發票。不要只調整費率就認定可開票，需向交易所確認或關閉抵扣。
+- NT$0.5 是費用目標，不會被程式擅自改成 1 元發票。是否四捨五入、彙總及何時開立，以交易所實際發票為準。
+- Dashboard 的「實收」僅採 API 原始費用與幣種；USDT／BITO 費用不冒充 TWD。缺資料就標示待核對，歷史紀錄不回填猜測費用。
+- 成交不等於開票，開票也不等於一定可兌獎。0 元發票不可兌獎；不合常規交易取得大量小額發票可能不予給獎或追回獎金。[統一發票給獎辦法第 11、15 條](https://law-out.mof.gov.tw/LawContent.aspx?id=FL006085)
+
+官方費率：[BitoPro](https://www.bitopro.com/ns/en-US/fees)、[MAX](https://support.maicoin.com/en/support/solutions/articles/32000026028-what-are-the-trading-fees-on-max-)。
 
 ## GitHub Actions 與 Pages 完整部署
 
-照以下順序即可完成部署。GitHub Free 使用 Pages 時，repository 應保持 public。
+### 1. Pages 設定
 
-### 1. 開啟 GitHub Pages
+Repository → **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**。GitHub Free 使用 Pages 請保持 repository public；不需建立 `gh-pages` branch，也不提交 `dist/`。
 
-1. Repository → **Settings → Pages**。
-2. **Build and deployment → Source** 選擇 **GitHub Actions**。
-3. 不需要建立 `gh-pages` branch，也不要 commit `dist/`。
+### 2. Actions Variables
 
-### 2. 建立 Actions Variables
+到 **Settings → Secrets and variables → Actions → Variables** 設定：
 
-前往 **Settings → Secrets and variables → Actions → Variables**：
-
-| Variable | 建議初始值 | 用途 |
+| Variable | 預設值 | 用途 |
 | --- | --- | --- |
-| `ORDER_USDT` | `1` | 每家希望至少交易的 USDT；MAX 仍會依官方門檻與開票成交目標自動提高 |
-| `USDT_RESERVE` | `0` | 賣出安全緩衝；`0` 代表不保留，`20` 代表不賣出最後 20 USDT |
-| `MAX_INVOICE_TWD_TARGET` | `625` | MAX 啟用時的成交名目金額目標；不是官方保證開票門檻 |
-| `MAX_CONVERT_ENABLED` | `true` | MAX 現貨資金不足時，是否允許嘗試官方閃兌 |
-| `BITOPRO_ENABLED` | `true` | 是否執行 BitoPro |
-| `MAX_ENABLED` | `false` | MAX 每日交易開關；停用仍保留 Dashboard 歷史 |
-| `MAX_TEST_DATE` | 不設定 | 只授權特定台北日期的 `max-test-625` 單次測試；測試後刪除 |
-| `LIVE_TRADING` | `false` | 真實交易總開關；完成 dry-run 與驗證前不要改成 `true` |
+| `BITOPRO_ENABLED` | `true` | BitoPro 每日交易開關 |
+| `MAX_ENABLED` | `false` | MAX 每日交易開關；需自行明確啟用，停用保留歷史 |
+| `BITOPRO_FEE_TWD_TARGET` | `0.5` | BitoPro 每次預估 TWD 手續費目標 |
+| `BITOPRO_TAKER_FEE_RATE` | `0.002` | BitoPro 有效費率；0.2% 填 0.002 |
+| `MAX_FEE_TWD_TARGET` | `1` | MAX 每次預估 TWD 手續費目標 |
+| `MAX_TAKER_FEE_RATE` | `0.0016` | MAX 有效費率；0.16% 填 0.0016 |
+| `ORDER_PRICE_SLIPPAGE` | `0.005` | 0.5% 價格緩衝；用於限價與保守估算，不是承諾實際滑價 |
+| `LIVE_TRADING` | `false` | 真實交易總開關，通過驗證後才能改 true |
 
-Variables 不是保密儲存，不能放 API Key、Secret、Email 或確認鎖。
+以上費用目標須大於 0，費率與緩衝須介於 0 與 1，拒絕 NaN／無限值。Workflow 已逐項將 Variables 傳入 Python；未設定時採預設值。
 
-程式載入 Secrets 時會自動移除複製貼上可能帶入的 UTF-8 BOM 與前後空白，避免不可見字元造成 HTTP header 編碼或簽章失敗；Secret 內容仍應只貼原始值，不要包含變數名稱或引號。
+舊的 `ORDER_USDT`、`USDT_RESERVE`、`MAX_INVOICE_TWD_TARGET`、`MAX_CONVERT_ENABLED`、`MAX_TEST_DATE` 及 `max-test-625` 模式已移除；舊 Variables 可刪除，不再影響下單。既有 625 元測試與歷史閃兌紀錄仍保留，MAX 只讀閃兌歷史以查重，不會新增閃兌。
 
-### 3. 建立交易所 API Key 與 Actions Secrets
+### 3. API Key 與 Actions Secrets
 
-API Key 只授予「讀取帳戶＋現貨交易」，**不要授予提領、出金或新增提領地址權限**。
+API Key 只授予**讀取帳戶＋現貨交易**，不要開啟提領、出金或新增提領地址權限。
 
-- BitoPro：登入網頁版 → API Management，保存 Email、API Key、API Secret。
+- BitoPro：登入網頁版 → API Management，保存會員 Email、API Key、API Secret。
 - MAX：登入網頁版 → API Key 管理，保存 Access Key、Secret Key。
 
-接著到 **Settings → Secrets and variables → Actions → Secrets** 建立：
+到同頁面的 **Secrets** 建立：
 
 | Secret | 用途 |
 | --- | --- |
-| `BITOPRO_EMAIL` | BitoPro API 簽章中的會員 Email |
+| `BITOPRO_EMAIL` | BitoPro 簽章所需會員 Email |
 | `BITOPRO_API_KEY` | BitoPro API Key |
 | `BITOPRO_API_SECRET` | BitoPro API Secret |
 | `MAX_API_KEY` | MAX Access Key |
 | `MAX_API_SECRET` | MAX Secret Key |
 | `CONFIRM_LIVE_TRADING` | 必須完全等於 `I_UNDERSTAND_THIS_PLACES_REAL_ORDERS` |
 
-只需設定已啟用交易所的憑證。若 Key 曾出現在對話、log、Variable、Issue 或 commit，先到交易所撤銷並重建，再啟用 live。
+只需提供啟用平台的憑證。Secret 只貼原始值，不帶名稱、引號；載入時會移除前後空白與複製貼上的 UTF-8 BOM。API Key／Secret 不可放在 Variables、repository 或 Pages。
 
-GitHub-hosted runner 沒有固定出站 IP；如果交易所帳戶強制固定 IP 白名單，請改用具固定 IP 的 self-hosted runner。
+GitHub-hosted runner 沒有固定出站 IP；需要固定白名單時，改用有固定 IP 的 self-hosted runner。
 
-### 4. 第一次 dry-run
+### 4. 先模擬，再驗證
 
-1. 確認 `LIVE_TRADING=false`。
-2. 前往 **Actions → Daily USDT trade and dashboard → Run workflow**。
-3. Branch 選 `main`，mode 選 `dry-run`。
-4. 等待 `build` 與 `deploy` 都出現綠色勾勾。
-5. 打開 Dashboard，應看到「安全模擬」、BitoPro 約 1 USDT、MAX 每日交易已停止，且沒有真實訂單。
+前往 **Actions → Daily USDT trade and dashboard → Run workflow**，Branch 選 `main`：
 
-`dry-run` 只讀公開行情與交易門檻，不讀私人餘額、不會送單，也不會把模擬結果算成真實成交。
+1. 保持 `LIVE_TRADING=false`，mode 選 `dry-run`：只讀公開行情，不讀私人餘額、不下單，檢查計畫量及預估費用。
+2. mode 選 `validate`：唯讀驗證啟用平台的 API。BitoPro 讀餘額與當日成交，MAX 讀餘額；不建立或取消訂單。
+3. 確認 build／deploy 成功並開啟 Dashboard。驗證成功只代表讀取權限正常，不保證交易權限或發票。
 
-### 5. 無下單驗證 API
+### 5. 正式啟用
 
-再次按 **Run workflow**，mode 選 `validate`：
+1. 核對費率、折扣、目標費用與可用餘額，建議一次只啟用一家。
+2. 設定確認鎖，將 `LIVE_TRADING=true`。
+3. 手動 mode 選 `live`，執行一次，再至官方成交紀錄核對。
+4. MAX 若要恢復每日買入，還須將 `MAX_ENABLED=true`；新程式不會自行解除既有停用。
+5. 不符預期時立即關閉 `LIVE_TRADING`、取消執行中的 Action，必要時撤銷 API Key。
 
-- BitoPro 只讀 `/accounts/balance`。
-- MAX 只讀 `/api/v3/wallet/spot/accounts`。
-- 成功代表 Key、Secret、Email、簽章與帳戶讀取權限正常。
-- `validate` 不建立、取消或成交訂單。
+### 6. 每日排程與推送部署
 
-### 6. 第一次真實下單
+- 排程每日 `01:17 UTC`，即台北時間 **09:17**；GitHub 可能延遲或漏跑，不保證準點。
+- 排程只執行啟用平台；`LIVE_TRADING=true` 才會真實下單，否則只模擬。
+- 今日 repository 或官方 API 已有成交，即使低於本次費用目標也不補單。
+- 直接 push `main` 自動部署，無須 merge。push 只執行 `--refresh`，不呼叫交易所 API、不下單。
+- 成功判斷：build／deploy 綠勾，Pages 可開啟且更新時間正確。新策略尚未查行情時會顯示等待換算，不沿用舊 1-USDT 計畫。
+- public repository 久無活動，GitHub 可能停用排程，需到 Actions 重新啟用。
 
-建議一次只測一家：
+Workflow：`.github/workflows/dashboard.yml`。`contents: write` 用於保存去識別資料；`pages: write`、`id-token: write` 用於 Pages 部署。Branch protection 若限制 bot push，需由管理員調整。
 
-1. 先將另一家的 `*_ENABLED` 設為 `false`。
-2. 核對 `ORDER_USDT`、`USDT_RESERVE` 與帳戶可用餘額。
-3. 確認 API Key 沒有提領權限，且 `CONFIRM_LIVE_TRADING` 已正確設定。
-4. 將 `LIVE_TRADING` 改成 `true`。
-5. 手動執行 workflow，mode 選 `live`，只執行一次。
-6. 到交易所官方訂單／成交紀錄核對，再檢查 Dashboard。
-7. 若結果不符預期，立刻將 `LIVE_TRADING` 改回 `false` 並撤銷 API Key。
+## 查重與異常反饋
 
-確認第一家正常後，再啟用第二家。MAX 第一次 live 建議先設 `MAX_CONVERT_ENABLED=false` 驗證現貨，確認後才開啟閃兌 fallback。
+查重依序使用 `data/state.json`、Dashboard 當日正式成交、官方當日 USDT/TWD 成交／歷史閃兌。每日自動訂單有穩定 client ID；查詢格式未知時停止下單，不猜測無紀錄。
 
-### 7. 每日排程
-
-- 排程：每日 `01:17 UTC`，即台北時間 `09:17`。
-- `LIVE_TRADING=true`：執行成交查重，必要時才下真實訂單。
-- `LIVE_TRADING=false`：只執行 dry-run。
-- GitHub 排程可能延遲或偶爾漏跑，不保證準點成交。
-- public repository 長期無活動時，GitHub 可能停用 scheduled workflow，需到 Actions 重新啟用。
-
-### 部署成功的判斷方式
-
-- 最新 Actions run 顯示 `completed / success`。
-- `Build, update data, and upload Pages artifact` 成功。
-- `Deploy dashboard to GitHub Pages` 成功。
-- <https://chijiun.github.io/usdt-invoice-pulse/> 可開啟，更新時間與 `public/data/dashboard.json` 相符。
-
-直接 push 到 `main` 即會部署，不需要手動 merge。push 只執行 `python -m bot.runner --refresh`：不呼叫交易所 API、不會下單，只重建 repository 內的成交／發票公開資料與 Pages artifact。
-
-## 交易與防重複邏輯
-
-程式只處理 `USDT/TWD`，不會碰其他幣種或交易對。
-
-```mermaid
-flowchart TD
-  A[讀取 USDT/TWD 行情與官方門檻] --> B[依最低 USDT、最低 TWD、ORDER_USDT 與 MAX 開票目標計算計畫量]
-  B --> C{正式模式?}
-  C -->|否| D[只模擬並更新 Dashboard]
-  C -->|是| E{repository 已有今日正式成交?}
-  E -->|是| F[沿用紀錄，不呼叫下單 API]
-  E -->|否| G{官方 API 已有今日 USDT/TWD 成交?}
-  G -->|是| F
-  G -->|否| H{TWD 足夠?}
-  H -->|是| I[買入 USDT]
-  H -->|否| J{扣除保留量後 USDT 足夠?}
-  J -->|是| K[賣出 USDT]
-  J -->|否| L{MAX 每日已啟用且 TWD 達成交目標?}
-  L -->|是| M[以開票成交目標嘗試 TWD 閃兌]
-  L -->|否| N[資金不足，本日略過]
-  I --> O[保存去識別成交與待確認發票狀態]
-  K --> O
-  M --> O
-```
-
-防重複共有三層：
-
-1. `data/state.json` 的當日正式成交。
-2. Dashboard 已保存的當日 live 成交。
-3. 官方成交歷史：BitoPro 查現貨 trades；MAX 查現貨 trades 與 converts。
-
-因此當天若已手動完成一筆 USDT/TWD 成交，也會被視為今日已成交，不再新增訂單。
-
-### 餘額與失敗反饋
-
-| 情況 | 行為與 Dashboard 反饋 |
+| 情況 | 行為 |
 | --- | --- |
-| TWD 足夠 | 買入計畫量 USDT，顯示買入、現貨、成交量與均價 |
-| TWD 不足、USDT 足夠 | 賣出計畫量 USDT，並保留 `USDT_RESERVE` |
-| MAX 的 TWD 達成交目標、但不足含緩衝的現貨買入額 | 只有每日交易與閃兌均啟用時才嘗試目標額閃兌；625 單次測試不使用閃兌 |
-| 兩種資產都不足 | 略過，不把單純零餘額當成程式錯誤 |
-| 今日已有成交 | 沿用既有結果，不再次呼叫下單 API |
-| 市場維護 | 略過並顯示市場狀態 |
-| 憑證、網路、簽章或拒單錯誤 | 顯示去識別化失敗原因；另一家仍繼續執行 |
+| BitoPro 的 TWD 足夠 | 買入完整計畫量 |
+| BitoPro 的 TWD 不足、USDT 足夠 | 賣出完整計畫量 |
+| BitoPro 兩種資產都不足 | 略過，不縮小成未達費用目標的交易 |
+| MAX 的 TWD 不足 | 略過，顯示需求與可用額；USDT 再多也不自動賣 |
+| 今日已有成交 | 沿用紀錄，不補足費用 |
+| 部分成交 | 保存實際成交；取消未成交部分，不補單 |
+| 實收費用讀取失敗 | 保留已成交狀態，費用標示待核對，不因費用讀取失敗重下 |
+| 維護／API／拒單錯誤 | 顯示略過或失敗原因；另一家可繼續執行 |
+
+「每日最多一次」限制的是自動新增訂單；已知成交或未完整成交不會重下。若前次明確未成交且尚無既有自動訂單，人工重跑仍會先查重，請勿為湊發票反覆執行。
 
 ## 今日成交與昨日發票
 
-Dashboard 的 `DAILY PULSE` 分開顯示：
-
-- **今日成交**：由 repository 與官方成交 API 自動判斷；dry-run 會清楚標示「僅模擬，未成交」。
-- **昨日發票**：由 `data/invoice-records.json` 的安全紀錄判斷。
-- **發票明細**：有安全 `detail_url` 時可以點擊；否則顯示交易所官方查詢說明。
-
-BitoPro 與 MAX 的交易 API 都不會回傳台灣電子發票號碼，因此不能只靠交易 API 自動確認開票。BitoPro 約兩天內通知，MAX 約 1–3 個工作天開立；「昨日尚未查到」不代表最終不會開立。
-
-### Email 自動核對可行性
-
-可以自動擷取兩家交易所寄來的發票信，但信箱授權方式必須依供應商實作；目前版本尚未連接信箱，也沒有任何 Email 密碼相關環境變數。
-
-- Gmail：使用 Gmail API 的唯讀 OAuth 與 refresh token，不保存 Google 密碼。
-- Outlook／Microsoft 365：使用 Microsoft Graph 的 `Mail.Read` OAuth，不使用已淘汰的基本帳密驗證。
-- 其他信箱：需確認是否提供 OAuth IMAP；不應把主要信箱密碼放入 GitHub Secrets。
-
-因為開票會延遲，未來的自動核對不應只搜尋「昨天收到的信」，而會每天回查最近 7 天仍待確認的成交，限制寄件者與主旨，再把解析出的開立日、金額、遮罩發票號碼與檢查時間寫入 `data/invoice-records.json`。原始信件、完整號碼、隨機碼、載具與 OAuth access token 都不會發布到 Pages；無法唯一對應成交日時標示 `manual_check`，不會猜測。
-
-正式加入前需要先決定收信信箱是 Gmail、Outlook 或其他服務，才能採用正確的 OAuth 流程與最小權限。官方參考：[Gmail API](https://developers.google.com/workspace/gmail/api/guides)、[Gmail 伺服器端 OAuth](https://developers.google.com/workspace/gmail/api/auth/web-server)、[Microsoft Graph／Exchange 開發建議](https://learn.microsoft.com/en-us/Exchange/client-developer/exchange-server-development)。
-
-### 更新發票紀錄
-
-以成交日作為 `trade_date`，編輯 `data/invoice-records.json`：
+交易 API 不提供台灣發票明細，目前**不連接 Gmail、不讀信箱、不需要 Email OAuth token**。請由交易所通知／載具／財政部平台確認後，更新 `data/invoice-records.json`：
 
 ```json
 [
   {
-    "id": "2026-08-05-max",
+    "id": "2026-09-14-max",
     "exchange": "max",
-    "trade_date": "2026-08-05",
+    "trade_date": "2026-09-14",
     "status": "confirmed",
-    "checked_at": "2026-08-06T10:30:00+08:00",
-    "issued_date": "2026-08-06",
+    "checked_at": "2026-09-16T10:30:00+08:00",
+    "issued_date": "2026-09-16",
     "amount_twd": "1",
     "masked_number": "AB••••••12",
     "detail_url": "https://www.einvoice.nat.gov.tw/APCONSUMER/BTC601W/",
-    "note": "已由載具確認"
+    "note": "範例，請改填實際核對結果"
   }
 ]
 ```
 
-| `status` | 意義 |
-| --- | --- |
-| `pending_confirmation` | 已成交，仍在合理等待期 |
-| `confirmed` | 已從 Email、載具或財政部平台確認開立 |
-| `not_found` | 已查詢但目前尚無資料，之後仍可更新 |
-| `manual_check` | 資訊不足，需要人工再確認 |
-
-推送紀錄後會自動更新 Pages：
+`trade_date` 指對應成交日。`status` 可用 `pending_confirmation`、`confirmed`、`not_found`、`manual_check`；`confirmed` 只代表已開立，0 元仍不可兌獎。推送紀錄會重建 Pages：
 
 ```bash
 git add data/invoice-records.json
@@ -231,40 +161,13 @@ git commit -m "chore: update invoice records"
 git push origin main
 ```
 
-公開 repository 不可保存完整發票號碼、隨機碼、手機條碼、Email、會員資料或查詢 token。完整號碼即使誤填也會在 Dashboard 輸出時遮罩；含帳密、query string 或 fragment 的 `detail_url` 會被拒絕發布。
+不可保存完整發票號碼、隨機碼、手機載具、Email 或查詢 token。完整號碼輸出會遮罩；含帳密、query string 或 fragment 的明細網址不會發布。
 
-官方查詢方式：[BitoPro 發票查詢與載具綁定](https://support.bitopro.com/hc/zh-tw/articles/360018704812)、[MAX 發票查詢與對領獎](https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066)。
-
-## Workflow 模式
-
-| 觸發方式 | 行為 | 會下單嗎 | 會部署 Pages 嗎 |
-| --- | --- | --- | --- |
-| push `main` | `--refresh`，只重建公開資料 | 否 | 是 |
-| 手動 `validate` | 只讀私人帳戶 API | 否 | 是 |
-| 手動 `dry-run` | 公開行情模擬 | 否 | 是 |
-| 手動 `live` | 查重後依餘額決定交易 | 可能；需通過雙重安全鎖 | 是 |
-| 每日 schedule | `LIVE_TRADING=true` 才 live，否則 dry-run | 依設定 | 是 |
-
-Workflow 檔案：`.github/workflows/dashboard.yml`。權限用途：
-
-- `contents: write`：提交去識別化 Dashboard 與防重複狀態。
-- `pages: write`、`id-token: write`：部署 GitHub Pages。
-
-若 organization 或 branch protection 禁止 Actions 寫入，資料 commit 可能失敗，需要 repository 管理員調整政策。
-
-## 緊急停止
-
-1. 將 Actions Variable `LIVE_TRADING` 改成 `false`。
-2. 到交易所撤銷 API Key。
-3. 到 GitHub Actions 取消仍在執行的 workflow。
-
-不需要刪除 repository 或 Dashboard。
+官方查詢：[BitoPro](https://support.bitopro.com/hc/zh-tw/articles/360018704812)、[MAX](https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066)。開票可能延遲，昨日未查到不代表最終不開票。
 
 ## 本機驗證
 
-需求：Python 3.12、Node.js 22。
-
-`.env.example` 是設定名稱參考，Python 不會自動載入該檔；本機驗證私人 API 前，請先在目前 shell 設定需要的環境變數。GitHub 部署則使用前述 Variables 與 Secrets。
+需求 Python 3.12、Node.js 22。`.env.example` 只是設定參考，不會被 Python 自動載入；本機請在 shell 設定環境變數，正式部署使用 Actions Variables／Secrets。
 
 ```bash
 npm ci
@@ -273,35 +176,12 @@ npm run bot:verify
 npm test
 ```
 
-`npm test` 會執行 Python 防護測試、TypeScript 檢查與 Vite 正式建置。
+`npm test` 包含 Python 防護測試、TypeScript 檢查與 Vite 正式建置。不要拿 live 下單當作測試指令。
 
-## 常見問題
+## 官方文件與風險
 
-| 現象 | 原因與處理 |
-| --- | --- |
-| MAX 計畫量高於 8 USDT | 正常；程式會把成交金額目標按即時買一價換算成 USDT 並向上取到可下單精度 |
-| MAX 成交後仍未開票 | 先等 1–3 個工作天並核對實收手續費、幣種及折扣；Dashboard 待確認不代表實際未開票 |
-| MAX 閃兌失敗 | 閃兌端點可能有額外限制；程式不會自動加碼，可關閉 `MAX_CONVERT_ENABLED` 或查看 MAX 回應 |
-| `LIVE_TRADING 尚未開啟` | workflow 選了 live，但 Variable 仍是 `false` |
-| `Unauthorized api key`／簽章失敗 | 檢查 Secret、BitoPro Email、權限與 Key 是否過期；不要把值貼到 log |
-| `'latin-1' codec can't encode character '\ufeff'` | Secret 開頭含 UTF-8 BOM；新版程式會在載入時自動清除，再執行 `validate` 確認 |
-| BitoPro 成交紀錄回應格式不符預期 | 空成交的 `null`／空物件會安全視為無紀錄；其他未知格式仍停止下單，先執行 `validate` 確認 |
-| 餘額不足而略過 | TWD 不足，扣除保留量後的 USDT 也不足；單次測試不改用低額閃兌 |
-| `USDT_RESERVE` 要設多少 | 它不是交易所門檻，只是防止程式賣光 USDT；不需要保留量就維持 `0` |
-| 今日已有正式成交 | 防重複機制生效，會沿用既有結果而不再下單 |
-| deploy 顯示 skipped | 手動 workflow 選的 Branch 不是 `main` |
-| Pages 404 或仍是舊版 | 確認 deploy job 成功，從 Settings → Pages 的 **Visit site** 開啟並等待快取更新 |
-| 排程沒有執行 | 到 Actions 檢查 scheduled workflow 是否被 GitHub 停用 |
+- [BitoPro API](https://github.com/bitoex/bitopro-official-api-docs)
+- [MAX API v3](https://max-api.maicoin.com/doc/v3.html)
+- [GitHub Pages Actions 部署](https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 
-## 官方參考
-
-- [BitoPro 官方 API](https://github.com/bitoex/bitopro-official-api-docs)
-- [BitoPro 發票規則](https://support.bitopro.com/hc/zh-tw/articles/360001517911)
-- [MAX API 文件](https://max-api.maicoin.com/doc/v3.html)
-- [MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074)
-- [GitHub Pages 自訂 Actions](https://docs.github.com/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
-- [GitHub Actions Secrets](https://docs.github.com/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
-
-## 免責
-
-本專案是個人自動化與紀錄工具，不構成投資、稅務、法律或中獎建議。自動交易可能因價格波動、API 變更、餘額不足、排程延遲或交易所規則而失敗；啟用真實模式前請自行確認最新條款與風險。
+本工具不構成投資、稅務、法律或中獎建議。真實交易會產生手續費、價差、滑價及 USDT/TWD 價格風險；費用達標、四捨五入開票及兌獎資格均不保證。

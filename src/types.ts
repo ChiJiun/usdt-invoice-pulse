@@ -24,9 +24,12 @@ export interface ExchangeStatus {
   accent: string;
   minimum_usdt: string;
   minimum_twd: string | null;
-  invoice_target_twd: string | null;
+  fee_target_twd: string | null;
+  fee_rate: string | null;
+  turnover_target_twd: string | null;
+  trade_policy: "buy_then_sell" | "buy_only";
   trading_enabled: boolean;
-  planned_usdt: string;
+  planned_usdt: string | null;
   convert_supported: boolean;
   target_eligible: boolean;
   today_status: RunStatus | "waiting";
@@ -45,6 +48,10 @@ export interface RunEvent {
   requested_usdt: string;
   filled_usdt: string;
   avg_price_twd: string | null;
+  fee_target_twd: string | null;
+  estimated_fee_twd: string | null;
+  actual_fee: string | null;
+  fee_currency: string | null;
   invoice_status: InvoiceStatus;
   message: string;
   mode: "dry_run" | "live";
@@ -99,7 +106,7 @@ export interface DashboardData {
   local_date: string;
   timezone: string;
   mode: "dry_run" | "live";
-  target_usdt: string;
+  strategy: "fee_target";
   summary: {
     exchanges_total: number;
     target_eligible: number;

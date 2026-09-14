@@ -6,10 +6,11 @@ import hmac
 import json
 import time
 import zlib
-from decimal import Decimal, ROUND_DOWN, ROUND_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_UP
 from typing import Any
 
-from bot.trading import choose_trade_side, effective_target, quantity_step
+from bot.models import decimal_text
+from bot.trading import choose_trade_side, fee_target_quantity, quantity_step
 
 from .base import ExchangeAdapter
 
@@ -21,9 +22,11 @@ class BitoProAdapter(ExchangeAdapter):
     accent = "#2f6bff"
     minimum_usdt = Decimal("1")
     minimum_twd: Decimal | None = None
-    planned_usdt = Decimal("1")
+    fee_target_setting = "bitopro_fee_twd_target"
+    fee_rate_setting = "bitopro_taker_fee_rate"
     base_url = "https://api.bitopro.com/v3"
     pair = "usdt_twd"
+    price_precision = 3
 
     @staticmethod
     def sign_payload(payload: str, secret: str) -> str:
@@ -67,6 +70,7 @@ class BitoProAdapter(ExchangeAdapter):
             "GET", f"{self.base_url}/provisioning/trading-pairs"
         )
         pair_info = next(row for row in pairs["data"] if row["pair"] == self.pair)
+        self.price_precision = int(pair_info.get("quotePrecision", 3))
         minimum = Decimal(pair_info["minLimitBaseAmount"])
         amount_precision = int(pair_info["amountPrecision"])
         maintain = bool(pair_info.get("maintain", False))
@@ -178,19 +182,46 @@ class BitoProAdapter(ExchangeAdapter):
             filled_usdt=filled,
             avg_price_twd=price or None,
             invoice_status="pending_confirmation",
+            **self._fee_fields(trade),
             message="官方 API 偵測到今日已有 USDT/TWD 成交，已沿用紀錄並停止新增訂單",
             live=True,
         )
 
+    @staticmethod
+    def _fee_fields(detail: dict[str, Any]) -> dict[str, Any]:
+        # BITO payments are not TWD invoice costs; keep the original currency.
+        try:
+            bito_fee = Decimal(str(detail.get("bitoFee") or "0"))
+            if bito_fee.is_finite() and bito_fee > 0:
+                return {"actual_fee": bito_fee, "fee_currency": "bito"}
+            fee, currency = detail.get("fee"), detail.get("feeSymbol")
+            parsed = Decimal(str(fee)) if fee is not None and currency else None
+            if parsed is not None and parsed.is_finite():
+                return {"actual_fee": parsed, "fee_currency": str(currency)}
+        except InvalidOperation:
+            pass
+        # A malformed/missing fee must not hide an accepted, filled order.
+        return {"actual_fee": None, "fee_currency": None}
+
     def run(self, *, live: bool):
         bid, ask, minimum, amount_precision, maintain = self._market_snapshot()
         self.minimum_usdt = minimum
-        target = effective_target(
-            self.settings.target_usdt,
-            minimum,
-            Decimal("0"),
-            bid,
-            quantity_step(amount_precision),
+        price_step = quantity_step(self.price_precision)
+        buy_price = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
+            price_step, rounding=ROUND_UP
+        )
+        sell_price = (bid * (Decimal("1") - self.settings.price_slippage)).quantize(
+            price_step, rounding=ROUND_DOWN
+        )
+        # A sell can fill as low as its limit. Sizing at bid alone could yield
+        # less than NT$0.5 in fees. BUY also uses this conservative price floor.
+        target = fee_target_quantity(
+            fee_twd=self.fee_target_twd,
+            fee_rate=self.fee_rate,
+            minimum_base=minimum,
+            minimum_quote=Decimal("0"),
+            price_floor_twd=sell_price,
+            step=quantity_step(amount_precision),
         )
         self.planned_usdt = target
         if maintain:
@@ -209,8 +240,12 @@ class BitoProAdapter(ExchangeAdapter):
                 requested_usdt=target,
                 filled_usdt=target,
                 avg_price_twd=ask,
+                estimated_fee_twd=target * ask * self.fee_rate,
                 invoice_status="not_applicable",
-                message="已自動套用官方最低量；模擬優先買入，正式模式會依餘額改為賣出或略過",
+                message=(
+                    f"依 NT$ {self.fee_target_twd.normalize():f} 手續費目標換算交易量；"
+                    "正式模式 TWD 足夠就買，否則 USDT 足夠就賣；不保證開票"
+                ),
                 live=False,
             )
 
@@ -267,16 +302,11 @@ class BitoProAdapter(ExchangeAdapter):
                     if executed
                     else "not_applicable"
                 ),
+                **self._fee_fields(detail),
                 message="偵測到今日既有自動訂單，已沿用結果並阻止重複交易",
                 live=True,
             )
 
-        buy_price = (ask * (Decimal("1") + self.settings.price_slippage)).quantize(
-            Decimal("0.001"), rounding=ROUND_UP
-        )
-        sell_price = (bid * (Decimal("1") - self.settings.price_slippage)).quantize(
-            Decimal("0.001"), rounding=ROUND_DOWN
-        )
         balances = self._account_balances()
         available_twd = self._available_balance(balances, "twd")
         available_usdt = self._available_balance(balances, "usdt")
@@ -286,13 +316,15 @@ class BitoProAdapter(ExchangeAdapter):
             target_usdt=target,
             buy_price_twd=buy_price,
             buy_buffer_rate=self.settings.bitopro_taker_fee_rate,
-            usdt_reserve=self.settings.usdt_reserve,
         )
         if side == "none":
             return self.base_result(
                 status="skipped",
                 requested_usdt=target,
-                message="TWD 不足以買入，扣除保留量後的 USDT 也不足以賣出；本日略過",
+                message=(
+                    f"可用 TWD 不足以買入 {target.normalize():f} USDT，"
+                    "USDT 也不足以賣出完整計畫量；本日略過，不降額交易"
+                ),
                 live=True,
             )
 
@@ -340,6 +372,7 @@ class BitoProAdapter(ExchangeAdapter):
             )
 
         avg_price = Decimal(detail.get("avgExecutionPrice", "0")) or ask
+        estimated_fee = executed * avg_price * self.fee_rate
         if executed >= target:
             status = "filled"
             message = "訂單已全數成交；等待電子發票開立通知"
@@ -349,6 +382,8 @@ class BitoProAdapter(ExchangeAdapter):
         else:
             status = "failed"
             message = "訂單未成交，已送出取消"
+        if executed > 0 and estimated_fee < self.fee_target_twd:
+            message += "；預估費用未達目標，不自動補單"
 
         return self.base_result(
             status=status,
@@ -357,6 +392,8 @@ class BitoProAdapter(ExchangeAdapter):
             requested_usdt=target,
             filled_usdt=executed,
             avg_price_twd=avg_price if executed else None,
+            estimated_fee_twd=estimated_fee if executed else None,
+            **self._fee_fields(detail),
             invoice_status=(
                 "pending_confirmation"
                 if executed
@@ -374,9 +411,16 @@ class BitoProAdapter(ExchangeAdapter):
             "accent": self.accent,
             "minimum_usdt": str(self.minimum_usdt),
             "minimum_twd": None,
-            "planned_usdt": str(self.planned_usdt),
+            "planned_usdt": decimal_text(self.planned_usdt),
+            "fee_target_twd": decimal_text(self.fee_target_twd),
+            "fee_rate": decimal_text(self.fee_rate),
+            "turnover_target_twd": decimal_text(self.turnover_target_twd),
+            "trade_policy": "buy_then_sell",
             "convert_supported": False,
-            "target_eligible": self.planned_usdt >= self.minimum_usdt,
+            "target_eligible": bool(self.planned_usdt and self.planned_usdt >= self.minimum_usdt),
             "today_status": today_status,
-            "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。",
+            "note": (
+                f"只做 USDT/TWD；以 NT$ {self.fee_target_twd.normalize():f} 預估手續費為目標，"
+                "TWD 足夠就買，否則 USDT 足夠就賣；每日最多一次，不保證 1 元發票。"
+            ),
         }

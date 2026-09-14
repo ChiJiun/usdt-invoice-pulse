@@ -27,28 +27,22 @@ def env_decimal(name: str, default: str) -> Decimal:
         value = Decimal(raw)
     except InvalidOperation as exc:
         raise ValueError(f"{name} 必須是數字") from exc
-    if value <= 0:
+    if not value.is_finite() or value <= 0:
         raise ValueError(f"{name} 必須大於 0")
     return value
 
 
-def env_nonnegative_decimal(name: str, default: str) -> Decimal:
-    raw = env_text(name, default)
-    try:
-        value = Decimal(raw)
-    except InvalidOperation as exc:
-        raise ValueError(f"{name} 必須是數字") from exc
-    if value < 0:
-        raise ValueError(f"{name} 不可小於 0")
+def env_rate(name: str, default: str) -> Decimal:
+    value = env_decimal(name, default)
+    if value >= 1:
+        raise ValueError(f"{name} 必須小於 1；0.2% 請填 0.002")
     return value
 
 
 @dataclass(frozen=True, slots=True)
 class Settings:
-    target_usdt: Decimal
-    usdt_reserve: Decimal
-    max_invoice_twd_target: Decimal
-    max_convert_enabled: bool
+    bitopro_fee_twd_target: Decimal
+    max_fee_twd_target: Decimal
     live_trading: bool
     live_confirmation: str
     bitopro_enabled: bool
@@ -68,10 +62,8 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            target_usdt=env_decimal("ORDER_USDT", "1"),
-            usdt_reserve=env_nonnegative_decimal("USDT_RESERVE", "0"),
-            max_invoice_twd_target=env_decimal("MAX_INVOICE_TWD_TARGET", "625"),
-            max_convert_enabled=env_bool("MAX_CONVERT_ENABLED", True),
+            bitopro_fee_twd_target=env_decimal("BITOPRO_FEE_TWD_TARGET", "0.5"),
+            max_fee_twd_target=env_decimal("MAX_FEE_TWD_TARGET", "1"),
             live_trading=env_bool("LIVE_TRADING", False),
             live_confirmation=env_text("CONFIRM_LIVE_TRADING"),
             bitopro_enabled=env_bool("BITOPRO_ENABLED", True),
@@ -81,9 +73,9 @@ class Settings:
             bitopro_api_secret=env_text("BITOPRO_API_SECRET"),
             max_api_key=env_text("MAX_API_KEY"),
             max_api_secret=env_text("MAX_API_SECRET"),
-            bitopro_taker_fee_rate=env_decimal("BITOPRO_TAKER_FEE_RATE", "0.002"),
-            max_taker_fee_rate=env_decimal("MAX_TAKER_FEE_RATE", "0.0016"),
-            price_slippage=env_decimal("ORDER_PRICE_SLIPPAGE", "0.005"),
+            bitopro_taker_fee_rate=env_rate("BITOPRO_TAKER_FEE_RATE", "0.002"),
+            max_taker_fee_rate=env_rate("MAX_TAKER_FEE_RATE", "0.0016"),
+            price_slippage=env_rate("ORDER_PRICE_SLIPPAGE", "0.005"),
             dashboard_path=Path(env_text("DASHBOARD_PATH", "public/data/dashboard.json")),
             state_path=Path(env_text("STATE_PATH", "data/state.json")),
             invoice_records_path=Path(
