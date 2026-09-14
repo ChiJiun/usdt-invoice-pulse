@@ -41,6 +41,19 @@ BitoPro 保守參考價為買一價扣除價格緩衝後的賣出限價；MAX �
 
 官方費率：[BitoPro](https://www.bitopro.com/ns/en-US/fees)、[MAX](https://support.maicoin.com/en/support/solutions/articles/32000026028-what-are-the-trading-fees-on-max-)。
 
+### 成交手續費紀錄
+
+正式成交後自動將實收費用保存至 `data/state.json` 與 `public/data/dashboard.json`，網站「每日成交與手續費」會展示；不需新增環境變數或 Gmail token。
+
+- `actual_fees`：依幣種彙總的 API 實收金額，以十進位字串保存，不四捨五入。例如 `[{"amount":"0.5008","currency":"twd"}]`；USDT、BITO 等另外列出，不自行換算 TWD。
+- `fee_source`：`order`（BitoPro 訂單總計）、`order_trades`（MAX 訂單撮合彙總）、`trade`（僅取得單筆撮合）、`convert`（既有閃兌紀錄）。查重偵測到撮合時會嘗試唯讀取得完整訂單費用；失敗就保留已知部分並標示總額待核對。
+- `fee_complete`：API 費用資料是否完整；完整回傳的 0 元保存為 0，缺值或格式錯誤不當成 0。部分資料保留已取得金額，但不冒充完整總額。
+- `actual_fee_twd`：僅保存 MAX 既有閃兌 API 明確回傳的 TWD 換算費用，不代表發票金額；`estimated_fee_twd` 始終只是估算。
+
+同日 repository 查重沿用以上費用，不重複加總、不再次下單。費用查詢失敗也不重下；舊紀錄未保存實收就維持待核對，不用目前費率猜測補值。MAX 停用時不呼叫其 API，歷史費用不會自動補查。Dashboard 最近執行紀錄最多保留 180 筆；正式成交的費用亦保存於 `data/state.json`，並隨每次排程提交至 GitHub。
+
+費用欄位依據：[BitoPro 訂單模型](https://github.com/bitoex/bitopro-official-api-docs/blob/master/model.md#order-model-explanation)、[MAX API v3](https://max-api.maicoin.com/doc/v3.html)。本次費用紀錄更新不改交易金額或開關，MAX 仍停用；尚未串接的 HOYA BIT 不會產生成交／費用紀錄。
+
 ## GitHub Actions 與 Pages 完整部署
 
 ### 1. Pages 設定

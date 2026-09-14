@@ -15,6 +15,7 @@ from unittest.mock import patch
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
 from bot.exchanges.max_exchange import MaxAdapter
+from bot.fees import fee_amount, fee_fields
 from bot.runner import (
     TAIPEI, existing_live_record, make_duplicate_result, normalize_invoice_records,
     parse_args, read_json, refreshed_exchange_status, run_all, safe_public_url, write_json,
@@ -44,6 +45,7 @@ class FakeHttp:
         fee="0.51", fee_currency="twd", fee_error=False,
         bito_orders=None, market_status="active", minimum_base="8",
         minimum_quote="250", amount_precision=4, price_precision=3,
+        fee_rows=None, order_details=None,
     ):
         self.calls = []
         self.requests = []
@@ -58,6 +60,7 @@ class FakeHttp:
         self.minimum_base, self.minimum_quote = minimum_base, minimum_quote
         self.amount_precision, self.price_precision = amount_precision, price_precision
         self.last_body = None
+        self.fee_rows, self.order_details = fee_rows, order_details or {}
 
     def request_json(self, method, url, **kwargs):
         self.calls.append((method, url))
@@ -107,7 +110,10 @@ class FakeHttp:
                 "executedAmount": str(filled), "remainingAmount": str(requested - filled),
                 "avgExecutionPrice": self.last_body["price"], "fee": self.fee,
                 "feeSymbol": self.fee_currency,
+                "status": 2 if filled == requested else 3,
             }
+        if method == "GET" and url.rsplit("/", 1)[-1] in self.order_details:
+            return self.order_details[url.rsplit("/", 1)[-1]]
         if method == "DELETE" and "/orders/usdt_twd/" in url:
             return {}
         if method == "POST" and url.endswith("/api/v3/wallet/spot/order"):
@@ -121,7 +127,10 @@ class FakeHttp:
         if url.endswith("/api/v3/order/trades"):
             if self.fee_error:
                 raise RuntimeError("fee endpoint unavailable")
-            return [{"fee": self.fee, "fee_currency": self.fee_currency}]
+            if self.fee_rows is not None:
+                return self.fee_rows
+            volume = (self.filled if self.filled is not None else self.last_body["volume"])
+            return [{"fee": self.fee, "fee_currency": self.fee_currency, "volume": volume}]
         raise AssertionError(f"Unexpected request: {method} {url}")
 
 
@@ -306,9 +315,11 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(result.fee_currency, "usdt")
         self.assertNotEqual(result.actual_fee, result.estimated_fee_twd)
         self.assertEqual(result.invoice_status, "pending_confirmation")
-        self.assertEqual(BitoProAdapter._fee_fields(
+        bito_fees = BitoProAdapter._fee_fields(
             {"fee": "0", "feeSymbol": "usdt", "bitoFee": "0.02"}
-        ), {"actual_fee": Decimal("0.02"), "fee_currency": "bito"})
+        )
+        self.assertEqual(bito_fees["actual_fee"], Decimal("0.02"))
+        self.assertEqual(bito_fees["fee_currency"], "bito")
 
     def test_bitopro_existing_small_fill_blocks_topup(self):
         http = FakeHttp(bitopro_trades=[{
@@ -372,7 +383,8 @@ class AdapterTests(unittest.TestCase):
         }])
         result = MaxAdapter(live_settings(), http).run(live=True)
         self.assertEqual(result.side, "sell")  # historical sell, not a new sell
-        self.assertEqual(result.actual_fee, Decimal("0.4"))
+        self.assertEqual(result.actual_fees, [{"amount": "0.4", "currency": "twd"}])
+        self.assertFalse(result.fee_complete)  # One fill cannot prove the order total.
         self.assertFalse(any(method == "POST" for method, _ in http.calls))
         params = next(kwargs["params"] for _, url, kwargs in http.requests
                       if url.endswith("/wallet/spot/trades"))
@@ -490,6 +502,10 @@ class DashboardPolicyTests(unittest.TestCase):
                 saved = read_json(configured.state_path, {})["live_runs"][event["date"]][event["exchange"]]
                 self.assertEqual(saved["actual_fee"], event["actual_fee"])
                 self.assertEqual(saved["estimated_fee_twd"], event["estimated_fee_twd"])
+                for field in ("actual_fees", "fee_complete", "fee_source", "actual_fee_twd"):
+                    self.assertEqual(saved[field], event[field])
+                    rerun = next(e for e in second["events"] if e["exchange"] == event["exchange"])
+                    self.assertEqual(rerun[field], event[field])
 
     def test_old_fee_values_are_not_reestimated_under_new_settings(self):
         result = make_duplicate_result(BitoProAdapter(settings()), {
@@ -556,6 +572,181 @@ class DashboardPolicyTests(unittest.TestCase):
         self.assertNotIn("max-test-625", workflow)
         self.assertNotIn("MAX_CONVERT_ENABLED", workflow)
         self.assertNotIn("ORDER_USDT", workflow)
+
+
+class FeeRecordingTests(unittest.TestCase):
+    def fields(self, rows):
+        return fee_fields(rows, currency_key="fee_currency", source="order_trades")
+
+    def test_native_currency_totals_and_exact_public_serialization(self):
+        fees = self.fields([
+            {"fee": "0.2001", "fee_currency": "TWD"},
+            {"fee": "0.3007", "fee_currency": "twd"},
+        ])
+        self.assertEqual(fees["actual_fee"], Decimal("0.5008"))
+        self.assertTrue(fees["fee_complete"])
+        result = MaxAdapter(settings()).base_result(status="filled", message="test", live=True, **fees)
+        payload = result.to_public_dict("test")
+        self.assertEqual(payload["actual_fees"], [{"amount": "0.5008", "currency": "twd"}])
+        json.dumps(payload)
+
+    def test_multiple_currencies_are_not_added_or_converted(self):
+        fees = self.fields([
+            {"fee": "0.1", "fee_currency": "usdt"},
+            {"fee": "0.5", "fee_currency": "twd"},
+        ])
+        self.assertTrue(fees["fee_complete"])
+        self.assertIsNone(fees["actual_fee"])
+        self.assertEqual(fees["actual_fees"], [
+            {"amount": "0.5", "currency": "twd"}, {"amount": "0.1", "currency": "usdt"},
+        ])
+
+    def test_missing_and_invalid_fees_preserve_known_portion(self):
+        for value in (None, "bad", "NaN", "Infinity", "", True):
+            with self.subTest(value=value):
+                fees = self.fields([
+                    {"fee": "0.25", "fee_currency": "twd"},
+                    {"fee": value, "fee_currency": "twd"},
+                ])
+                self.assertFalse(fees["fee_complete"])
+                self.assertIsNone(fees["actual_fee"])
+                self.assertEqual(fees["actual_fees"], [{"amount": "0.25", "currency": "twd"}])
+        self.assertFalse(self.fields([])["fee_complete"])
+        self.assertFalse(self.fields([{"fee": "0"}])["fee_complete"])
+
+    def test_explicit_zero_and_negative_rebate_are_recorded(self):
+        fees = self.fields([{"fee": "0.0000", "fee_currency": "twd"}])
+        self.assertTrue(fees["fee_complete"])
+        self.assertEqual(fees["actual_fees"], [{"amount": "0", "currency": "twd"}])
+        self.assertEqual(fee_amount("-0.1"), Decimal("-0.1"))
+
+    def test_bitopro_keeps_regular_and_bito_charges(self):
+        fees = BitoProAdapter._fee_fields({"fee": "0.3", "feeSymbol": "TWD", "bitoFee": "0.02"})
+        self.assertEqual(fees["actual_fees"], [
+            {"amount": "0.02", "currency": "bito"}, {"amount": "0.3", "currency": "twd"},
+        ])
+        self.assertTrue(fees["fee_complete"])
+
+    def test_bitopro_bito_payment_is_not_counted_twice(self):
+        fees = BitoProAdapter._fee_fields({"fee": "0.02", "feeSymbol": "BITO", "bitoFee": "0.02"})
+        self.assertEqual(fees["actual_fees"], [{"amount": "0.02", "currency": "bito"}])
+
+    def test_bitopro_lookup_recovers_order_total_without_new_order(self):
+        http = FakeHttp(bitopro_trades=[{
+            "orderId": "existing", "baseAmount": "1", "quoteAmount": "32",
+            "action": "BUY", "fee": "0.1", "feeSymbol": "TWD",
+            "createdTimestamp": int(time.time() * 1000),
+        }], order_details={"existing": {
+            "executedAmount": "8", "remainingAmount": "0", "avgExecutionPrice": "32",
+            "fee": "0.512", "feeSymbol": "TWD",
+        }})
+        result = BitoProAdapter(live_settings(), http).run(live=True)
+        self.assertEqual(result.filled_usdt, Decimal("8"))
+        self.assertEqual(result.actual_fee, Decimal("0.512"))
+        self.assertEqual(result.fee_source, "order")
+        self.assertTrue(all(method == "GET" for method, _ in http.calls))
+
+    def test_max_lookup_recovers_all_order_fees_and_fills(self):
+        http = FakeHttp(max_trades=[{
+            "order_id": 42, "volume": "1", "funds": "32", "market": "usdttwd", "side": "bid",
+            "created_at": int(time.time() * 1000), "fee": "0.05", "fee_currency": "twd",
+        }], fee_rows=[
+            {"id": 1, "volume": "1", "funds": "32", "fee": "0.05", "fee_currency": "twd"},
+            {"id": 2, "volume": "7", "funds": "224", "fee": "0.45", "fee_currency": "twd"},
+        ])
+        result = MaxAdapter(live_settings(), http).run(live=True)
+        self.assertEqual(result.filled_usdt, Decimal("8"))
+        self.assertEqual(result.actual_fee, Decimal("0.5"))
+        self.assertTrue(result.fee_complete)
+        self.assertTrue(all(method == "GET" for method, _ in http.calls))
+
+    def test_max_duplicate_trade_id_not_double_counted(self):
+        trade = {"id": 1, "fee": "0.25", "fee_currency": "twd", "volume": "2"}
+        fees = MaxAdapter._trade_fees([trade, trade], expected_volume=Decimal("2"))
+        self.assertEqual(fees["actual_fee"], Decimal("0.25"))
+
+    def test_max_partial_fee_response_not_claimed_as_complete(self):
+        http = FakeHttp(fee_rows=[{"volume": "1", "fee": "0.05", "fee_currency": "twd"}])
+        result = MaxAdapter(live_settings(), http).run(live=True)
+        self.assertEqual(result.status, "filled")
+        self.assertFalse(result.fee_complete)
+        self.assertEqual(result.actual_fees, [{"amount": "0.05", "currency": "twd"}])
+        self.assertEqual(sum(method == "POST" for method, _ in http.calls), 1)
+
+    def test_max_invalid_fee_does_not_hide_fill(self):
+        for fee in ("bad", "NaN", "Infinity"):
+            result = MaxAdapter(live_settings(), FakeHttp(fee=fee)).run(live=True)
+            self.assertEqual(result.status, "filled")
+            self.assertFalse(result.fee_complete)
+            self.assertIsNone(result.actual_fee)
+
+    def test_max_convert_preserves_explicit_twd_valuation(self):
+        result = MaxAdapter(settings())._convert_result({
+            "from_currency": "twd", "from_amount": "10", "to_currency": "usdt",
+            "to_amount": "0.3", "fee": "0.001", "fee_currency": "usdt", "fee_in_twd": "0.032",
+        }, message="historical")
+        self.assertEqual(result.actual_fee_twd, Decimal("0.032"))
+        self.assertEqual(result.actual_fee, Decimal("0.001"))
+        self.assertEqual(result.fee_currency, "usdt")
+        self.assertEqual(result.fee_source, "convert")
+
+    def test_duplicate_preserves_legacy_scalar_fee(self):
+        result = make_duplicate_result(BitoProAdapter(settings()), {
+            "status": "filled", "side": "buy", "filled_usdt": "8",
+            "actual_fee": "0.5008", "fee_currency": "TWD",
+        })
+        self.assertEqual(result.actual_fees, [{"amount": "0.5008", "currency": "twd"}])
+        self.assertTrue(result.fee_complete)
+
+    def test_fee_lookup_failure_keeps_history_fill_and_known_fee(self):
+        for adapter_type, kwargs in (
+            (BitoProAdapter, {"bitopro_trades": [{
+                "orderId": "missing", "action": "BUY", "baseAmount": "1", "quoteAmount": "32",
+                "fee": "0.05", "feeSymbol": "twd", "createdTimestamp": int(time.time() * 1000),
+            }]}),
+            (MaxAdapter, {"max_trades": [{
+                "order_id": 42, "side": "bid", "volume": "1", "funds": "32", "market": "usdttwd",
+                "fee": "0.05", "fee_currency": "twd", "created_at": int(time.time() * 1000),
+            }], "fee_error": True}),
+        ):
+            http = FakeHttp(**kwargs)
+            result = adapter_type(live_settings(), http).run(live=True)
+            self.assertEqual(result.status, "filled")
+            self.assertEqual(result.actual_fees, [{"amount": "0.05", "currency": "twd"}])
+            self.assertFalse(result.fee_complete)
+            self.assertTrue(all(method == "GET" for method, _ in http.calls))
+
+    def test_max_mixed_fees_are_saved_on_new_order(self):
+        adapter = MaxAdapter(live_settings(), FakeHttp(filled="2", fee_rows=[
+            {"volume": "1", "fee": "0.03", "fee_currency": "TWD"},
+            {"volume": "1", "fee": "0.001", "fee_currency": "USDT"},
+        ]))
+        result = adapter.run(live=True)
+        self.assertEqual(result.status, "partial")
+        self.assertTrue(result.fee_complete)
+        self.assertEqual(result.actual_fees, [
+            {"amount": "0.03", "currency": "twd"}, {"amount": "0.001", "currency": "usdt"},
+        ])
+
+    def test_bitopro_bad_final_fee_lookup_preserves_partial_fill(self):
+        class BadFinalHttp(FakeHttp):
+            canceled = False
+
+            def request_json(self, method, url, **kwargs):
+                if method == "GET" and url.endswith("/orders/usdt_twd/bito-order-1") and self.canceled:
+                    return {"executedAmount": "NaN"}
+                response = super().request_json(method, url, **kwargs)
+                if method == "DELETE":
+                    self.canceled = True
+                return response
+
+        http = BadFinalHttp(filled="1", fee="0.05")
+        with patch("bot.exchanges.bitopro.time.sleep", return_value=None):
+            result = BitoProAdapter(live_settings(), http).run(live=True)
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(result.filled_usdt, Decimal("1"))
+        self.assertFalse(result.fee_complete)
+        self.assertEqual(result.actual_fees, [{"amount": "0.05", "currency": "twd"}])
 
 
 if __name__ == "__main__":

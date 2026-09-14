@@ -52,6 +52,10 @@ export interface RunEvent {
   estimated_fee_twd: string | null;
   actual_fee: string | null;
   fee_currency: string | null;
+  actual_fees: { amount: string; currency: string }[];
+  fee_complete: boolean;
+  fee_source: string | null;
+  actual_fee_twd: string | null;
   invoice_status: InvoiceStatus;
   message: string;
   mode: "dry_run" | "live";

@@ -10,6 +10,7 @@ from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from typing import Any
 
 from bot.models import decimal_text
+from bot.fees import fee_amount, fee_fields
 from bot.trading import choose_trade_side, fee_target_quantity, quantity_step
 
 from .base import ExchangeAdapter
@@ -172,6 +173,18 @@ class MaxAdapter(ExchangeAdapter):
         price = Decimal(str(trade.get("price", "0")))
         if not price and filled > 0:
             price = funds / filled
+        fees = fee_fields([trade], currency_key="fee_currency", source="trade", complete=False)
+        if trade.get("order_id"):
+            try:
+                rows = self._order_trades(order_id=str(trade["order_id"]))
+                volume = sum((Decimal(str(row.get("volume", "0"))) for row in rows), Decimal("0"))
+                quote = sum((Decimal(str(row.get("funds", "0"))) for row in rows), Decimal("0"))
+                if volume >= filled:
+                    filled = volume
+                    price = quote / volume if quote > 0 else price
+                    fees = self._trade_fees(rows)
+            except Exception:
+                pass
         return self.base_result(
             status="filled",
             side=side,
@@ -180,9 +193,7 @@ class MaxAdapter(ExchangeAdapter):
             filled_usdt=filled,
             avg_price_twd=price or None,
             invoice_status="pending_confirmation",
-            actual_fee=(Decimal(str(trade["fee"]))
-                        if trade.get("fee") is not None and trade.get("fee_currency") else None),
-            fee_currency=trade.get("fee_currency"),
+            **fees,
             message="官方 API 偵測到今日已有 USDT/TWD 現貨成交，已沿用紀錄並停止新增訂單",
             live=True,
         )
@@ -213,29 +224,56 @@ class MaxAdapter(ExchangeAdapter):
             invoice_status=(
                 "pending_confirmation" if filled_usdt > 0 else "not_applicable"
             ),
+            **fee_fields([order], currency_key="fee_currency", source="convert"),
+            actual_fee_twd=fee_amount(order.get("fee_in_twd")),
             message=message,
             live=True,
         )
 
-    def _order_fees(self, client_oid: str) -> tuple[Decimal | None, str | None]:
+    def _order_trades(self, *, client_oid: str | None = None, order_id: str | None = None):
         path = "/api/v3/order/trades"
-        params = {"nonce": int(time.time() * 1000), "client_oid": client_oid}
+        params = {"nonce": int(time.time() * 1000)}
+        params.update({"client_oid": client_oid} if client_oid else {"order_id": order_id})
         trades = self.http.request_json(
             "GET", f"{self.base_url}{path}", params=params,
             headers=self._auth_headers(params, path),
         )
-        if not isinstance(trades, list):
+        if not isinstance(trades, list) or not all(isinstance(row, dict) for row in trades):
             raise RuntimeError("MAX 訂單費用回應格式不符預期")
-        if not trades or not all(
-            isinstance(row, dict) and row.get("fee") is not None and row.get("fee_currency")
-            for row in trades
-        ):
-            return None, None
-        currencies = {str(row["fee_currency"]).lower() for row in trades}
-        if len(currencies) != 1:
-            return None, None
-        fee = sum((Decimal(str(row["fee"])) for row in trades), Decimal("0"))
-        return fee, currencies.pop()
+        unique = []
+        seen = set()
+        for trade in trades:
+            trade_id = str(trade["id"]) if trade.get("id") is not None else None
+            if trade_id is not None and trade_id in seen:
+                continue
+            if trade_id is not None:
+                seen.add(trade_id)
+            unique.append(trade)
+        return unique
+
+    @staticmethod
+    def _trade_fees(
+        trades: list[dict[str, Any]], *, expected_volume: Decimal | None = None,
+    ) -> dict[str, Any]:
+        rows = []
+        seen = set()
+        volumes = []
+        for row in trades:
+            if row.get("id") is not None:
+                trade_id = str(row["id"])
+                if trade_id in seen:
+                    continue
+                seen.add(trade_id)
+            rows.append(row)
+            volumes.append(fee_amount(row.get("volume")))
+            if row.get("side") == "self-trade":
+                rows.append({"fee": row.get("self_trade_bid_fee"),
+                             "fee_currency": row.get("self_trade_bid_fee_currency")})
+        complete = expected_volume is None or (
+            all(volume is not None for volume in volumes)
+            and sum((volume for volume in volumes if volume is not None), Decimal("0")) == expected_volume
+        )
+        return fee_fields(rows, currency_key="fee_currency", source="order_trades", complete=complete)
 
     def run(self, *, live: bool):
         _, ask, minimum_base, minimum_quote, base_precision, market_status = self._snapshot()
@@ -339,20 +377,21 @@ class MaxAdapter(ExchangeAdapter):
         estimated_fee = executed * average * self.fee_rate
         if executed > 0 and estimated_fee < self.fee_target_twd:
             message += "；預估費用未達目標"
-        actual_fee = None
-        fee_currency = None
+        fees = fee_fields([], currency_key="fee_currency", source="order_trades")
         if executed > 0:
             # Fees live on the trade endpoint, not the order response. A fee
             # read failure must not hide a successful fill or trigger a retry.
             try:
-                actual_fee, fee_currency = self._order_fees(client_oid)
+                fees = self._trade_fees(
+                    self._order_trades(client_oid=client_oid), expected_volume=executed,
+                )
             except Exception:
                 message += "；實收費用讀取未完成，請至官方成交紀錄確認"
         return self.base_result(
             status=status, side="buy", execution_type="spot", requested_usdt=target,
             filled_usdt=executed, avg_price_twd=average if executed else None,
             estimated_fee_twd=estimated_fee if executed else None,
-            actual_fee=actual_fee, fee_currency=fee_currency,
+            **fees,
             invoice_status="pending_confirmation" if executed else "not_applicable",
             message=message, live=True,
         )

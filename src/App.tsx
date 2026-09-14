@@ -127,6 +127,14 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       estimated_fee_twd: event.estimated_fee_twd ?? null,
       actual_fee: event.actual_fee ?? null,
       fee_currency: event.fee_currency ?? null,
+      actual_fees: event.actual_fees ?? (
+        event.actual_fee != null && event.fee_currency
+          ? [{ amount: event.actual_fee, currency: event.fee_currency.toLowerCase() }]
+          : []
+      ),
+      fee_complete: event.fee_complete ?? (event.actual_fee != null && !!event.fee_currency),
+      fee_source: event.fee_source ?? null,
+      actual_fee_twd: event.actual_fee_twd ?? null,
     }));
   const invoiceRecords = (payload.invoice_records ?? []).filter((invoice) =>
     SUPPORTED_EXCHANGE_IDS.has(invoice.exchange.toLowerCase()),
@@ -231,6 +239,10 @@ function ExchangeCard({
 }
 
 function EventRow({ event }: { event: RunEvent }) {
+  const hasTrade = event.mode === "live" && ["filled", "partial"].includes(event.status);
+  const sourceLabels: Record<string, string> = {
+    order: "訂單總計", order_trades: "撮合彙總", trade: "單筆撮合", convert: "閃兌紀錄",
+  };
   return (
     <tr>
       <td>
@@ -255,10 +267,24 @@ function EventRow({ event }: { event: RunEvent }) {
       </td>
       <td className="numeric">
         <div className="table-primary">
-          {event.actual_fee !== null && event.fee_currency
-            ? `實收 ${event.fee_currency === "twd" ? "NT$" : event.fee_currency.toUpperCase()} ${formatNumber(event.actual_fee, 8)}`
+          {!hasTrade ? "無實際成交費用" : event.actual_fees.length
+            ? event.actual_fees.map((fee) => (
+              <div key={fee.currency}>
+                {event.fee_complete ? "實收" : "已取得"} {fee.currency === "twd" ? "NT$" : fee.currency.toUpperCase()} {fee.amount}
+              </div>
+            ))
             : "實收待核對"}
         </div>
+        {hasTrade && (
+          <div className="table-secondary">
+            {event.fee_source ? `API · ${sourceLabels[event.fee_source] ?? "成交紀錄"}`
+              : event.actual_fees.length ? "沿用已保存費用" : "未保存 API 費用"}
+            {!event.fee_complete && " · 總額待核對"}
+          </div>
+        )}
+        {hasTrade && event.actual_fee_twd !== null && (
+          <div className="table-secondary">API 換算 NT$ {event.actual_fee_twd}（非發票金額）</div>
+        )}
         <div className="table-secondary">
           {event.estimated_fee_twd !== null
             ? `預估 NT$ ${formatNumber(event.estimated_fee_twd, 4)}`
@@ -574,7 +600,7 @@ function App() {
           <div className="section-heading">
             <div>
               <p className="eyebrow">RUN LEDGER</p>
-              <h2>每日執行紀錄</h2>
+              <h2>每日成交與手續費</h2>
             </div>
             <div className="filter-tabs" role="group" aria-label="篩選執行紀錄">
               {(["all", "executed", "skipped"] as const).map((value) => (
@@ -589,6 +615,10 @@ function App() {
               ))}
             </div>
           </div>
+          <p className="daily-disclaimer">
+            實收依 API 原幣金額保存，不與預估或發票金額混用；多筆撮合按幣種彙總，缺資料不視為零。
+            {" "}<a href="./data/dashboard.json" target="_blank" rel="noreferrer">查看完整 JSON 紀錄 ↗</a>
+          </p>
           <div className="table-wrap">
             <table>
               <thead>

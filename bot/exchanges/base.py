@@ -47,6 +47,10 @@ class ExchangeAdapter(ABC):
         estimated_fee_twd: Decimal | None = None,
         actual_fee: Decimal | None = None,
         fee_currency: str | None = None,
+        actual_fees: list[dict[str, str]] | None = None,
+        fee_complete: bool = False,
+        fee_source: str | None = None,
+        actual_fee_twd: Decimal | None = None,
         message: str,
         live: bool,
     ) -> RunResult:
@@ -70,6 +74,10 @@ class ExchangeAdapter(ABC):
             estimated_fee_twd=estimated_fee_twd,
             actual_fee=actual_fee,
             fee_currency=fee_currency.lower() if fee_currency else None,
+            actual_fees=actual_fees or [],
+            fee_complete=fee_complete,
+            fee_source=fee_source,
+            actual_fee_twd=actual_fee_twd,
         )
 
     @abstractmethod

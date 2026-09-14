@@ -105,6 +105,16 @@ def make_duplicate_result(adapter: Any, record: dict[str, Any]) -> RunResult:
         actual_fee=(Decimal(str(record["actual_fee"]))
                     if record.get("actual_fee") is not None else None),
         fee_currency=record.get("fee_currency"),
+        actual_fees=record.get("actual_fees") if record.get("actual_fees") is not None else (
+            [{"amount": str(record["actual_fee"]), "currency": str(record["fee_currency"]).lower()}]
+            if record.get("actual_fee") is not None and record.get("fee_currency") else []
+        ),
+        fee_complete=record.get(
+            "fee_complete", record.get("actual_fee") is not None and bool(record.get("fee_currency")),
+        ),
+        fee_source=record.get("fee_source"),
+        actual_fee_twd=(Decimal(str(record["actual_fee_twd"]))
+                        if record.get("actual_fee_twd") is not None else None),
         message="repository 已保存今日正式成交，重複防護已沿用紀錄且未再次呼叫下單 API",
         live=True,
     )
@@ -379,6 +389,10 @@ def run_all(
                     "estimated_fee_twd": decimal_text(result.estimated_fee_twd),
                     "actual_fee": decimal_text(result.actual_fee),
                     "fee_currency": result.fee_currency,
+                    "actual_fees": result.actual_fees,
+                    "fee_complete": result.fee_complete,
+                    "fee_source": result.fee_source,
+                    "actual_fee_twd": decimal_text(result.actual_fee_twd),
                 }
 
     new_events = [result.to_public_dict(event_id(result)) for result in results]

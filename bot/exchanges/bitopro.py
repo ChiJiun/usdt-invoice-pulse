@@ -6,10 +6,11 @@ import hmac
 import json
 import time
 import zlib
-from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from typing import Any
 
 from bot.models import decimal_text
+from bot.fees import fee_amount, fee_fields
 from bot.trading import choose_trade_side, fee_target_quantity, quantity_step
 
 from .base import ExchangeAdapter
@@ -174,6 +175,25 @@ class BitoProAdapter(ExchangeAdapter):
         price = Decimal(str(trade.get("price", "0")))
         if not price and filled > 0:
             price = quote / filled
+        fees = self._fee_fields(trade, source="trade", complete=False)
+        # A history row is a fill, not necessarily the whole order. Prefer the
+        # official order totals when recovering after an interrupted Action.
+        if trade.get("orderId"):
+            try:
+                detail = self.http.request_json(
+                    "GET", f"{self.base_url}/orders/{self.pair}/{trade['orderId']}",
+                    headers=self._read_headers(),
+                )
+                order_filled = Decimal(str(detail.get("executedAmount", "0")))
+                if order_filled >= filled:
+                    filled = order_filled
+                    price = Decimal(str(detail.get("avgExecutionPrice", "0"))) or price
+                    fees = self._fee_fields(
+                        detail, complete=Decimal(str(detail.get("remainingAmount", "1"))) <= 0
+                        or int(detail.get("status", -1)) in {2, 3, 4, 6},
+                    )
+            except Exception:
+                pass  # Preserve the known fill; fee lookup must never re-order.
         return self.base_result(
             status="filled",
             side=side,
@@ -182,26 +202,27 @@ class BitoProAdapter(ExchangeAdapter):
             filled_usdt=filled,
             avg_price_twd=price or None,
             invoice_status="pending_confirmation",
-            **self._fee_fields(trade),
+            **fees,
             message="官方 API 偵測到今日已有 USDT/TWD 成交，已沿用紀錄並停止新增訂單",
             live=True,
         )
 
     @staticmethod
-    def _fee_fields(detail: dict[str, Any]) -> dict[str, Any]:
-        # BITO payments are not TWD invoice costs; keep the original currency.
-        try:
-            bito_fee = Decimal(str(detail.get("bitoFee") or "0"))
-            if bito_fee.is_finite() and bito_fee > 0:
-                return {"actual_fee": bito_fee, "fee_currency": "bito"}
-            fee, currency = detail.get("fee"), detail.get("feeSymbol")
-            parsed = Decimal(str(fee)) if fee is not None and currency else None
-            if parsed is not None and parsed.is_finite():
-                return {"actual_fee": parsed, "fee_currency": str(currency)}
-        except InvalidOperation:
-            pass
-        # A malformed/missing fee must not hide an accepted, filled order.
-        return {"actual_fee": None, "fee_currency": None}
+    def _fee_fields(
+        detail: dict[str, Any], *, source: str = "order", complete: bool = True,
+    ) -> dict[str, Any]:
+        rows = [{"fee": detail.get("fee"), "feeSymbol": detail.get("feeSymbol")}]
+        bito_fee = fee_amount(detail.get("bitoFee"))
+        if bito_fee is not None and bito_fee > 0:
+            # bitoFee is the BITO payment. Do not count it twice if feeSymbol
+            # already names BITO, or retain a zero placeholder in another coin.
+            if (str(detail.get("feeSymbol", "")).lower() == "bito"
+                    or fee_amount(detail.get("fee")) == 0):
+                rows = []
+            rows.append({"fee": bito_fee, "feeSymbol": "bito"})
+        elif "bitoFee" in detail and bito_fee is None:
+            complete = False
+        return fee_fields(rows, currency_key="feeSymbol", source=source, complete=complete)
 
     def run(self, *, live: bool):
         bid, ask, minimum, amount_precision, maintain = self._market_snapshot()
@@ -288,6 +309,16 @@ class BitoProAdapter(ExchangeAdapter):
                     params={"isAllStrategyCanceled": "true"},
                     headers=self._read_headers(),
                 )
+                try:
+                    final_detail = self.http.request_json(
+                        "GET", f"{self.base_url}/orders/{self.pair}/{order_id}",
+                        headers=self._read_headers(),
+                    )
+                    final_executed = Decimal(str(final_detail["executedAmount"]))
+                    if final_executed.is_finite() and final_executed >= executed:
+                        detail, executed = final_detail, final_executed
+                except Exception:
+                    pass
             avg_price = Decimal(detail.get("avgExecutionPrice", "0")) or ask
             status = "filled" if executed >= target else "partial" if executed > 0 else "failed"
             return self.base_result(
@@ -302,7 +333,9 @@ class BitoProAdapter(ExchangeAdapter):
                     if executed
                     else "not_applicable"
                 ),
-                **self._fee_fields(detail),
+                **self._fee_fields(
+                    detail, complete=remaining <= 0 or int(detail.get("status", -1)) in {2, 3, 4, 6},
+                ),
                 message="偵測到今日既有自動訂單，已沿用結果並阻止重複交易",
                 live=True,
             )
@@ -363,6 +396,7 @@ class BitoProAdapter(ExchangeAdapter):
 
         executed = Decimal(detail.get("executedAmount", "0"))
         remaining = Decimal(detail.get("remainingAmount", str(target)))
+        fee_final = True
         if remaining > 0:
             self.http.request_json(
                 "DELETE",
@@ -370,6 +404,19 @@ class BitoProAdapter(ExchangeAdapter):
                 params={"isAllStrategyCanceled": "true"},
                 headers=self._read_headers(),
             )
+            fee_final = False
+            try:
+                final_detail = self.http.request_json(
+                    "GET", f"{self.base_url}/orders/{self.pair}/{order_id}",
+                    headers=self._read_headers(),
+                )
+                final_executed = Decimal(str(final_detail["executedAmount"]))
+                final_status = int(final_detail.get("status", -1))
+                if final_executed.is_finite() and final_executed >= executed:
+                    detail, executed = final_detail, final_executed
+                    fee_final = final_status in {2, 3, 4, 6}
+            except Exception:
+                pass  # Keep the confirmed fill even if final fee lookup fails.
 
         avg_price = Decimal(detail.get("avgExecutionPrice", "0")) or ask
         estimated_fee = executed * avg_price * self.fee_rate
@@ -393,7 +440,7 @@ class BitoProAdapter(ExchangeAdapter):
             filled_usdt=executed,
             avg_price_twd=avg_price if executed else None,
             estimated_fee_twd=estimated_fee if executed else None,
-            **self._fee_fields(detail),
+            **self._fee_fields(detail, complete=fee_final),
             invoice_status=(
                 "pending_confirmation"
                 if executed

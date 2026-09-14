@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
 from typing import Literal
 
@@ -43,6 +43,10 @@ class RunResult:
     estimated_fee_twd: Decimal | None = None
     actual_fee: Decimal | None = None
     fee_currency: str | None = None
+    actual_fees: list[dict[str, str]] = field(default_factory=list)
+    fee_complete: bool = False
+    fee_source: str | None = None
+    actual_fee_twd: Decimal | None = None
 
     def to_public_dict(self, event_id: str) -> dict[str, object]:
         payload = asdict(self)
@@ -50,7 +54,7 @@ class RunResult:
         payload["date"] = payload.pop("local_date")
         for field in (
             "requested_usdt", "filled_usdt", "avg_price_twd", "fee_target_twd",
-            "estimated_fee_twd", "actual_fee",
+            "estimated_fee_twd", "actual_fee", "actual_fee_twd",
         ):
             payload[field] = decimal_text(payload[field])  # type: ignore[arg-type]
         return payload
