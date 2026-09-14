@@ -1,6 +1,6 @@
 # 一塊日常：每日 USDT/TWD 成交與發票 Dashboard
 
-使用 GitHub Actions 每日執行 BitoPro 與 MAX 的低額 `USDT/TWD` 交易，並把去識別化的成交與發票確認狀態發布到 GitHub Pages。
+使用 GitHub Actions 每日執行啟用平台的低額 `USDT/TWD` 交易，並把去識別化的成交與發票確認狀態發布到 GitHub Pages。目前 BitoPro 照常執行，MAX 停止每日交易，只保留成交歷史與發票紀錄。
 
 - Repository：<https://github.com/ChiJiun/usdt-invoice-pulse>
 - Dashboard：<https://chijiun.github.io/usdt-invoice-pulse/>
@@ -13,11 +13,19 @@
 | 交易所 | `ORDER_USDT=1` 時 | 資金不足時 | 發票狀態 |
 | --- | --- | --- | --- |
 | BitoPro | 最低約 1 USDT 限價現貨 | TWD 不足則改賣 USDT；兩者都不足就略過 | 成交後約兩天內通知，API 不含發票明細 |
-| MAX | 官方最低 8 USDT／NT$250；程式另提高到至少 NT$313 | TWD 不足則改賣足額 USDT；只有 TWD 已達 313、但不足現貨買入緩衝時才試閃兌 | 約 1–3 個工作天開立，API 不含發票明細 |
+| MAX | 預設停用；625 元單次測試只交易現貨，不用閃兌 | TWD 不足則改賣足額 USDT；兩者不足就略過，不自動重試 | 約 1–3 個工作天開立，API 不含發票明細 |
 
-門檻會在每次交易執行時從官方公開 API 重新讀取；`ORDER_USDT` 是設定下限，不是固定 1 USDT，也不是上限。MAX 的 `MAX_INVOICE_TWD_TARGET=313` 是開票成交目標，與官方最低下單額 NT$250 分開處理。
+門檻會在每次交易執行時從官方公開 API 重新讀取；`ORDER_USDT` 是設定下限，不是固定 1 USDT，也不是上限。MAX 的 `MAX_INVOICE_TWD_TARGET=625` 是成交名目金額目標，與官方最低下單額 NT$250 分開處理。
 
-MAX 一般 taker 費率為 0.16%，NT$313 × 0.16% = NT$0.5008，四捨五入後才可能達到 NT$1 發票。這是依官方費率與發票進位規則推導的保守目標，不是 MAX 保證門檻；若帳戶有 VIP 或 MAX Token 手續費折扣，實際手續費可能仍不足 NT$1。官方說明：[交易手續費](https://support.maicoin.com/en/support/solutions/articles/32000026028-what-are-the-trading-fees-on-max-)、[MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074-max-%E6%9C%83%E9%96%8B%E7%99%BC%E7%A5%A8%E5%97%8E-%E7%99%BC%E7%A5%A8%E5%85%A7%E5%AE%B9%E6%98%AF%E4%BB%80%E9%BA%BC-)。
+MAX 一般 taker 費率為 0.16%，NT$625 × 0.16% = NT$1；原本 NT$313 的目標只是無折扣時手續費約 0.5 元的臨界估算，不是保守保證值。發票依實收手續費每日彙總及四捨五入計算，VIP、推薦碼或 MAX Token 折扣會影響實收金額；成交不等於已確認開票。官方說明：[交易手續費](https://support.maicoin.com/en/support/solutions/articles/32000026028-what-are-the-trading-fees-on-max-)、[MAX 發票規則](https://support.maicoin.com/zh-TW/support/solutions/articles/32000021074-max-%E6%9C%83%E9%96%8B%E7%99%BC%E7%A5%A8%E5%97%8E-%E7%99%BC%E7%A5%A8%E5%85%A7%E5%AE%B9%E6%98%AF%E4%BB%80%E9%BA%BC-)。
+
+### MAX 625 元單次測試
+
+1. 保持 `MAX_ENABLED=false`，一般 schedule、live、dry-run 都不執行 MAX；BitoPro 不受影響。
+2. 只有明確授權測試時，才設定 Variable `MAX_TEST_DATE` 為當日台北日期（`YYYY-MM-DD`）。`LIVE_TRADING=true` 與確認鎖仍是必要條件。
+3. 手動執行 workflow，mode 選 `max-test-625`：只測試 MAX 現貨，計畫成交額至少 NT$625；不呼叫 BitoPro、不做閃兌、不自動加碼或重試。
+4. 今日已有成交就沿用，不補單；一次嘗試會保存至 `data/state.json` 的 `max_test_attempts`，同日重跑不再嘗試，非授權日期也拒絕執行。
+5. 測試後刪除 `MAX_TEST_DATE`，MAX 維持停用；成交與發票紀錄不會因停用被刪除。發票需於 1–3 個工作天後由 Email／載具人工確認。
 
 ## GitHub Actions 與 Pages 完整部署
 
@@ -37,10 +45,11 @@ MAX 一般 taker 費率為 0.16%，NT$313 × 0.16% = NT$0.5008，四捨五入後
 | --- | --- | --- |
 | `ORDER_USDT` | `1` | 每家希望至少交易的 USDT；MAX 仍會依官方門檻與開票成交目標自動提高 |
 | `USDT_RESERVE` | `0` | 賣出安全緩衝；`0` 代表不保留，`20` 代表不賣出最後 20 USDT |
-| `MAX_INVOICE_TWD_TARGET` | `313` | MAX 每次現貨／閃兌希望達到的最低成交名目金額；不是官方保證開票門檻 |
+| `MAX_INVOICE_TWD_TARGET` | `625` | MAX 啟用時的成交名目金額目標；不是官方保證開票門檻 |
 | `MAX_CONVERT_ENABLED` | `true` | MAX 現貨資金不足時，是否允許嘗試官方閃兌 |
 | `BITOPRO_ENABLED` | `true` | 是否執行 BitoPro |
-| `MAX_ENABLED` | `true` | 是否執行 MAX |
+| `MAX_ENABLED` | `false` | MAX 每日交易開關；停用仍保留 Dashboard 歷史 |
+| `MAX_TEST_DATE` | 不設定 | 只授權特定台北日期的 `max-test-625` 單次測試；測試後刪除 |
 | `LIVE_TRADING` | `false` | 真實交易總開關；完成 dry-run 與驗證前不要改成 `true` |
 
 Variables 不是保密儲存，不能放 API Key、Secret、Email 或確認鎖。
@@ -75,7 +84,7 @@ GitHub-hosted runner 沒有固定出站 IP；如果交易所帳戶強制固定 I
 2. 前往 **Actions → Daily USDT trade and dashboard → Run workflow**。
 3. Branch 選 `main`，mode 選 `dry-run`。
 4. 等待 `build` 與 `deploy` 都出現綠色勾勾。
-5. 打開 Dashboard，應看到「安全模擬」、BitoPro 約 1 USDT、MAX 計畫成交額至少 NT$313，且沒有真實訂單。
+5. 打開 Dashboard，應看到「安全模擬」、BitoPro 約 1 USDT、MAX 每日交易已停止，且沒有真實訂單。
 
 `dry-run` 只讀公開行情與交易門檻，不讀私人餘額、不會送單，也不會把模擬結果算成真實成交。
 
@@ -136,7 +145,7 @@ flowchart TD
   H -->|是| I[買入 USDT]
   H -->|否| J{扣除保留量後 USDT 足夠?}
   J -->|是| K[賣出 USDT]
-  J -->|否| L{MAX 閃兌已啟用且 TWD 至少 313?}
+  J -->|否| L{MAX 每日已啟用且 TWD 達成交目標?}
   L -->|是| M[以開票成交目標嘗試 TWD 閃兌]
   L -->|否| N[資金不足，本日略過]
   I --> O[保存去識別成交與待確認發票狀態]
@@ -158,7 +167,7 @@ flowchart TD
 | --- | --- |
 | TWD 足夠 | 買入計畫量 USDT，顯示買入、現貨、成交量與均價 |
 | TWD 不足、USDT 足夠 | 賣出計畫量 USDT，並保留 `USDT_RESERVE` |
-| MAX 的 TWD 達 313、但不足含緩衝的現貨買入額 | 嘗試 NT$313 的 TWD → USDT 閃兌；被拒絕時不自動加碼 |
+| MAX 的 TWD 達成交目標、但不足含緩衝的現貨買入額 | 只有每日交易與閃兌均啟用時才嘗試目標額閃兌；625 單次測試不使用閃兌 |
 | 兩種資產都不足 | 略過，不把單純零餘額當成程式錯誤 |
 | 今日已有成交 | 沿用既有結果，不再次呼叫下單 API |
 | 市場維護 | 略過並顯示市場狀態 |
@@ -270,14 +279,14 @@ npm test
 
 | 現象 | 原因與處理 |
 | --- | --- |
-| MAX 計畫量高於 8 USDT | 正常；程式會把 `MAX_INVOICE_TWD_TARGET=313` 按即時買一價換算成 USDT 並向上取到可下單精度 |
-| MAX 成交 313 元仍未開票 | 313 是依一般 0.16% taker 費率推導；檢查是否有 VIP／MAX Token 費折，並依實際發票結果調高 `MAX_INVOICE_TWD_TARGET` |
+| MAX 計畫量高於 8 USDT | 正常；程式會把成交金額目標按即時買一價換算成 USDT 並向上取到可下單精度 |
+| MAX 成交後仍未開票 | 先等 1–3 個工作天並核對實收手續費、幣種及折扣；Dashboard 待確認不代表實際未開票 |
 | MAX 閃兌失敗 | 閃兌端點可能有額外限制；程式不會自動加碼，可關閉 `MAX_CONVERT_ENABLED` 或查看 MAX 回應 |
 | `LIVE_TRADING 尚未開啟` | workflow 選了 live，但 Variable 仍是 `false` |
 | `Unauthorized api key`／簽章失敗 | 檢查 Secret、BitoPro Email、權限與 Key 是否過期；不要把值貼到 log |
 | `'latin-1' codec can't encode character '\ufeff'` | Secret 開頭含 UTF-8 BOM；新版程式會在載入時自動清除，再執行 `validate` 確認 |
 | BitoPro 成交紀錄回應格式不符預期 | 空成交的 `null`／空物件會安全視為無紀錄；其他未知格式仍停止下單，先執行 `validate` 確認 |
-| 餘額不足而略過 | TWD 不足，扣除保留量後的 USDT 也不足；MAX 的 TWD 亦未達 313 元閃兌目標 |
+| 餘額不足而略過 | TWD 不足，扣除保留量後的 USDT 也不足；單次測試不改用低額閃兌 |
 | `USDT_RESERVE` 要設多少 | 它不是交易所門檻，只是防止程式賣光 USDT；不需要保留量就維持 `0` |
 | 今日已有正式成交 | 防重複機制生效，會沿用既有結果而不再下單 |
 | deploy 顯示 skipped | 手動 workflow 選的 Branch 不是 `main` |

@@ -25,6 +25,7 @@ export interface ExchangeStatus {
   minimum_usdt: string;
   minimum_twd: string | null;
   invoice_target_twd: string | null;
+  trading_enabled: boolean;
   planned_usdt: string;
   convert_supported: boolean;
   target_eligible: boolean;

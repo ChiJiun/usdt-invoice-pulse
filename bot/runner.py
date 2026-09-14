@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
-from bot.config import Settings
+from bot.config import Settings, env_text
 from bot.exchanges import BitoProAdapter, MaxAdapter
 from bot.models import RunResult, decimal_text
 
@@ -315,22 +316,39 @@ def exception_result(adapter: Any, live: bool, exc: Exception) -> RunResult:
     )
 
 
+def max_test_settings(settings: Settings, today: str) -> Settings:
+    """Allow one dated spot test only while ordinary MAX trading is paused."""
+    settings.assert_live_authorized()
+    if settings.max_enabled:
+        raise ValueError("MAX 單次測試前必須先設定 MAX_ENABLED=false")
+    if env_text("MAX_TEST_DATE") != today:
+        raise ValueError("MAX_TEST_DATE 必須等於今日台北日期；已拒絕過期或未授權測試")
+    return replace(
+        settings,
+        target_usdt=Decimal("1"),
+        max_invoice_twd_target=Decimal("625"),
+        max_convert_enabled=False,
+    )
+
+
 def run_all(
-    settings: Settings, *, live: bool, refresh_only: bool = False
+    settings: Settings, *, live: bool, refresh_only: bool = False, max_test: bool = False
 ) -> dict[str, Any]:
     current = datetime.now(TAIPEI)
     today = current.date().isoformat()
+    if max_test:
+        if not live or refresh_only:
+            raise ValueError("MAX 單次測試只能使用正式下單模式")
+        settings = max_test_settings(settings, today)
     state = read_json(settings.state_path, {"version": 1, "live_runs": {}})
     existing_dashboard = read_json(settings.dashboard_path, {"events": []})
     raw_invoice_records = read_json(settings.invoice_records_path, [])
     if not isinstance(raw_invoice_records, list):
         raw_invoice_records = []
 
-    adapters = []
-    if settings.bitopro_enabled:
-        adapters.append(BitoProAdapter(settings))
-    if settings.max_enabled:
-        adapters.append(MaxAdapter(settings))
+    # Pausing execution must not erase supported exchanges or their history.
+    adapters = [BitoProAdapter(settings), MaxAdapter(settings)]
+    trading_enabled = {"bitopro": settings.bitopro_enabled, "max": settings.max_enabled}
     supported_exchange_ids = {adapter.id for adapter in adapters}
     exchange_aliases = {
         value.lower(): adapter.id
@@ -342,6 +360,19 @@ def run_all(
     results: list[RunResult] = []
     if not refresh_only:
         for adapter in adapters:
+            if max_test:
+                if adapter.id != "max" or today in state.get("max_test_attempts", {}):
+                    continue
+                state.setdefault("max_test_attempts", {})[today] = {
+                    "started_at": current.isoformat(timespec="seconds"),
+                    "target_twd": "625",
+                    "status": "started",
+                }
+                # Reserve before any request; exchange history is the backstop
+                # if a runner dies before GitHub can commit this state.
+                write_json(settings.state_path, state)
+            elif not trading_enabled[adapter.id]:
+                continue
             known_record = existing_live_record(
                 state, existing_dashboard, today, adapter.id
             )
@@ -353,6 +384,16 @@ def run_all(
                 except Exception as exc:  # keep one exchange failure from hiding other results
                     result = exception_result(adapter, live, exc)
             results.append(result)
+            if max_test:
+                state["max_test_attempts"][today].update(
+                    status=result.status,
+                    filled_usdt=decimal_text(result.filled_usdt),
+                    avg_price_twd=decimal_text(result.avg_price_twd),
+                    turnover_twd=decimal_text(
+                        result.filled_usdt * result.avg_price_twd
+                        if result.avg_price_twd is not None else Decimal("0")
+                    ),
+                )
 
             if live and result.status in {"filled", "partial"}:
                 state.setdefault("live_runs", {}).setdefault(today, {})[adapter.id] = {
@@ -395,6 +436,12 @@ def run_all(
         else adapter.public_status(today_status.get(adapter.id, "waiting"))
         for adapter in adapters
     ]
+    for status in exchange_statuses:
+        enabled = trading_enabled[str(status["id"])]
+        status["trading_enabled"] = enabled
+        if not enabled:
+            status["target_eligible"] = False
+            status["note"] = "已停止每日交易；保留成交歷史與發票確認紀錄。"
     daily_status = build_daily_status(adapters, events, invoice_records, today)
 
     filled_events = [
@@ -457,6 +504,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument("--dry-run", action="store_true", help="只模擬，不送單")
     mode.add_argument("--live", action="store_true", help="允許正式下單")
     mode.add_argument(
+        "--max-test-625", action="store_true", help="限定 MAX_TEST_DATE 的 MAX 625 元單次現貨測試"
+    )
+    mode.add_argument(
         "--refresh", action="store_true", help="只重建公開資料，不呼叫交易所 API"
     )
     return parser.parse_args(argv)
@@ -466,10 +516,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         settings = Settings.from_env()
-        if args.live:
+        if args.live or args.max_test_625:
             settings.assert_live_authorized()
         dashboard = run_all(
-            settings, live=args.live, refresh_only=args.refresh
+            settings, live=args.live or args.max_test_625, refresh_only=args.refresh,
+            max_test=args.max_test_625,
         )
     except ValueError as exc:
         print(f"設定錯誤：{exc}", file=sys.stderr)
@@ -480,6 +531,11 @@ def main(argv: list[str] | None = None) -> int:
         f"完成：模式={dashboard['mode']} 可執行={summary['target_eligible']}/"
         f"{summary['exchanges_total']} 今日={dashboard['local_date']}"
     )
+    if args.max_test_625:
+        record = read_json(settings.state_path, {}).get("max_test_attempts", {}).get(
+            dashboard["local_date"], {}
+        )
+        print(f"MAX 單次測試結果：{record.get('status', 'unknown')}；每日交易維持停用")
     return 0
 
 

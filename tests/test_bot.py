@@ -8,13 +8,17 @@ import time
 import unittest
 from dataclasses import replace
 from decimal import Decimal
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 from bot.config import Settings
 from bot.exchanges.bitopro import BitoProAdapter
 from bot.exchanges.max_exchange import MaxAdapter
-from bot.runner import existing_live_record, normalize_invoice_records, safe_public_url
+from bot.runner import (
+    TAIPEI, existing_live_record, max_test_settings, normalize_invoice_records,
+    read_json, run_all, safe_public_url, write_json,
+)
 from bot.trading import choose_trade_side, effective_target
 
 
@@ -200,7 +204,8 @@ class ConfigurationTests(unittest.TestCase):
             loaded = Settings.from_env()
 
         self.assertEqual(loaded.target_usdt, Decimal("1"))
-        self.assertEqual(loaded.max_invoice_twd_target, Decimal("313"))
+        self.assertEqual(loaded.max_invoice_twd_target, Decimal("625"))
+        self.assertFalse(loaded.max_enabled)
         self.assertTrue(loaded.live_trading)
         loaded.assert_live_authorized()
         self.assertEqual(loaded.bitopro_email, "owner@example.com")
@@ -457,6 +462,119 @@ class RuleTests(unittest.TestCase):
             http.calls,
             [("GET", "https://max-api.maicoin.com/api/v3/wallet/spot/accounts")],
         )
+
+
+class MaxOneShotTests(unittest.TestCase):
+    def configured(self, directory: str) -> Settings:
+        root = Path(directory)
+        return replace(
+            settings(), max_enabled=False, live_trading=True,
+            live_confirmation="I_UNDERSTAND_THIS_PLACES_REAL_ORDERS",
+            max_api_key="key", max_api_secret="secret",
+            bitopro_email="member@example.invalid", bitopro_api_key="key",
+            bitopro_api_secret="secret", dashboard_path=root / "dashboard.json",
+            state_path=root / "state.json", invoice_records_path=root / "invoices.json",
+        )
+
+    def test_expired_or_missing_date_rejects_before_any_api_request(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configured = self.configured(directory)
+            for date_text in ("", "2000-01-01", "2999-01-01"):
+                with self.subTest(date=date_text), patch.dict(os.environ, {"MAX_TEST_DATE": date_text}):
+                    with patch("bot.runner.MaxAdapter") as constructor:
+                        with self.assertRaisesRegex(ValueError, "MAX_TEST_DATE"):
+                            run_all(configured, live=True, max_test=True)
+                        constructor.assert_not_called()
+
+    def test_test_requires_daily_max_paused_and_live_confirmation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configured = self.configured(directory)
+            with self.assertRaisesRegex(ValueError, "MAX_ENABLED=false"):
+                max_test_settings(replace(configured, max_enabled=True), "2026-09-14")
+            with self.assertRaisesRegex(ValueError, "確認鎖"):
+                max_test_settings(replace(configured, live_confirmation=""), "2026-09-14")
+
+    def test_one_dated_625_spot_attempt_only_and_bitopro_keeps_its_schedule(self):
+        today = datetime.now(TAIPEI).date().isoformat()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"MAX_TEST_DATE": today}):
+            configured = self.configured(directory)
+            test_settings = max_test_settings(configured, today)
+            self.assertEqual(test_settings.max_invoice_twd_target, Decimal("625"))
+            self.assertFalse(test_settings.max_convert_enabled)
+            http = FakeHttp()
+            max_adapter = MaxAdapter(test_settings, http)
+            bito_adapter = BitoProAdapter(test_settings, http)
+            with patch("bot.runner.MaxAdapter", return_value=max_adapter), patch(
+                "bot.runner.BitoProAdapter", return_value=bito_adapter
+            ), patch("bot.exchanges.bitopro.time.sleep", return_value=None):
+                report = run_all(configured, live=True, max_test=True)
+                self.assertEqual(http.last_body["volume"], "19.38")
+                self.assertTrue(all("bitopro.com" not in url for _, url in http.calls))
+                first_call_count = len(http.calls)
+                run_all(configured, live=True, max_test=True)
+                self.assertEqual(len(http.calls), first_call_count)
+                run_all(configured, live=True)
+                self.assertTrue(any("bitopro.com" in url for _, url in http.calls))
+            max_posts = [url for method, url in http.calls if method == "POST" and "maicoin.com" in url]
+            self.assertEqual(max_posts, ["https://max-api.maicoin.com/api/v3/wallet/spot/order"])
+            attempt = read_json(configured.state_path, {})["max_test_attempts"][today]
+            self.assertEqual(attempt["status"], "filled")
+            self.assertGreaterEqual(Decimal(attempt["turnover_twd"]), Decimal("625"))
+            max_card = next(row for row in report["exchanges"] if row["id"] == "max")
+            self.assertFalse(max_card["trading_enabled"])
+            self.assertTrue(any(event["exchange"] == "max" for event in report["events"]))
+
+    def test_disabled_exchange_and_invoice_history_are_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configured = replace(self.configured(directory), bitopro_enabled=False)
+            write_json(configured.dashboard_path, {"events": [{
+                "id": "old-max-trade", "date": "2026-09-10", "exchange": "max",
+                "mode": "live", "status": "filled", "filled_usdt": "9.92",
+            }]})
+            write_json(configured.invoice_records_path, [{
+                "id": "old-max-invoice", "exchange": "max",
+                "trade_date": "2026-09-10", "status": "confirmed",
+            }])
+            http = FakeHttp()
+            with patch("bot.runner.MaxAdapter", return_value=MaxAdapter(configured, http)), patch(
+                "bot.runner.BitoProAdapter", return_value=BitoProAdapter(configured, http)
+            ):
+                report = run_all(configured, live=True)
+            self.assertEqual(http.calls, [])
+            self.assertEqual(report["events"][0]["id"], "old-max-trade")
+            self.assertEqual(report["invoice_records"][0]["id"], "old-max-invoice")
+            self.assertEqual({row["id"] for row in report["exchanges"]}, {"bitopro", "max"})
+
+    def test_existing_small_today_trade_is_not_topped_up(self):
+        today = datetime.now(TAIPEI).date().isoformat()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"MAX_TEST_DATE": today}):
+            configured = self.configured(directory)
+            write_json(configured.state_path, {"live_runs": {today: {"max": {
+                "status": "filled", "side": "buy", "execution_type": "spot",
+                "filled_usdt": "9.87", "avg_price_twd": "31.72",
+            }}}})
+            http = FakeHttp()
+            with patch("bot.runner.MaxAdapter", return_value=MaxAdapter(configured, http)):
+                report = run_all(configured, live=True, max_test=True)
+            self.assertEqual(http.calls, [])
+            event = next(event for event in report["events"] if event["exchange"] == "max")
+            self.assertEqual(event["filled_usdt"], "9.87")
+            self.assertIn("重複防護", event["message"])
+
+    def test_insufficient_funds_attempt_is_not_automatically_retried(self):
+        today = datetime.now(TAIPEI).date().isoformat()
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"MAX_TEST_DATE": today}):
+            configured = self.configured(directory)
+            http = FakeHttp(max_twd="0", max_usdt="0")
+            adapter = MaxAdapter(max_test_settings(configured, today), http)
+            with patch("bot.runner.MaxAdapter", return_value=adapter):
+                run_all(configured, live=True, max_test=True)
+                first_call_count = len(http.calls)
+                run_all(configured, live=True, max_test=True)
+            self.assertEqual(len(http.calls), first_call_count)
+            self.assertFalse(any(method == "POST" for method, _ in http.calls))
+            attempt = read_json(configured.state_path, {})["max_test_attempts"][today]
+            self.assertEqual(attempt["status"], "skipped")
 
 
 class DashboardPolicyTests(unittest.TestCase):

@@ -109,6 +109,7 @@ function sanitizeDashboard(payload: DashboardData): DashboardData {
       ...exchange,
       minimum_twd: exchange.minimum_twd ?? null,
       invoice_target_twd: exchange.invoice_target_twd ?? null,
+      trading_enabled: exchange.trading_enabled ?? true,
       planned_usdt: exchange.planned_usdt ?? exchange.minimum_usdt,
       convert_supported: exchange.convert_supported ?? false,
     }));
@@ -168,7 +169,7 @@ function ExchangeCard({
       <div className="exchange-card__top">
         <span className="exchange-mark">{exchange.short_name}</span>
         <span className={`status-dot status-dot--${exchange.today_status}`}>
-          {statusLabels[exchange.today_status]}
+          {exchange.trading_enabled ? statusLabels[exchange.today_status] : "每日交易已停止"}
         </span>
       </div>
       <div>
@@ -195,7 +196,9 @@ function ExchangeCard({
       </div>
       <div className="eligibility-line">
         <span className={exchange.target_eligible ? "tick tick--yes" : "tick"} aria-hidden="true" />
-        {exchange.invoice_target_twd ? (
+        {!exchange.trading_enabled ? (
+          <>僅保留成交與發票紀錄，不再自動下單</>
+        ) : exchange.invoice_target_twd ? (
           <>執行時依即時行情換算，成交目標至少 NT$ {formatNumber(exchange.invoice_target_twd, 0)}</>
         ) : (
           <>
@@ -394,7 +397,7 @@ function App() {
             <p className="kicker"><span>DAILY</span> · USDT RECEIPT PULSE</p>
             <h1>今天有沒有成交，<br /><em>昨天有沒有開票。</em></h1>
             <p className="hero-lead">
-              每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT；MAX 每筆以至少 NT$313 為開票成交目標。執行前會查官方成交紀錄，發票則保存後續確認結果。
+              啟用的平台每天只做 USDT/TWD：TWD 足夠就買，否則賣出可用 USDT。MAX 已停止每日交易，保留單次測試與成交歷史；發票待實際開立確認。
             </p>
           </div>
 
@@ -408,7 +411,7 @@ function App() {
             <div>
               <p className="eyebrow">TODAY'S READINESS</p>
               <h2>{readinessTitle}</h2>
-              <p>設定下限為 {formatNumber(data.target_usdt, 4)} USDT；MAX 另會提高至至少 NT$313 的成交目標。</p>
+              <p>設定下限為 {formatNumber(data.target_usdt, 4)} USDT；停止每日交易的平台只保留紀錄，不會自動下單。</p>
             </div>
           </aside>
         </div>
