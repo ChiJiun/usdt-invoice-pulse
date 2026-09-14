@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-13T14:13:56+08:00",
-  "local_date": "2026-09-13",
+  "generated_at": "2026-09-14T11:41:21+08:00",
+  "local_date": "2026-09-14",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "target_usdt": "1",
   "summary": {
     "exchanges_total": 2,
-    "target_eligible": 2,
-    "pending_invoice_checks": 76,
-    "total_filled_usdt": "350.83775799",
-    "today_trades": 2,
+    "target_eligible": 1,
+    "pending_invoice_checks": 77,
+    "total_filled_usdt": "370.53775799",
+    "today_trades": 1,
     "yesterday_invoices_issued": 0
   },
   "exchanges": [
@@ -23,8 +23,9 @@
       "planned_usdt": "1",
       "convert_supported": false,
       "target_eligible": true,
-      "today_status": "filled",
-      "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。"
+      "today_status": "waiting",
+      "note": "只做 USDT/TWD 現貨；TWD 足夠時買入，否則在 USDT 足夠時賣出。官方 API 未提供閃兌執行端點。",
+      "trading_enabled": true
     },
     {
       "id": "max",
@@ -33,15 +34,32 @@
       "accent": "#1aa679",
       "minimum_usdt": "8.0",
       "minimum_twd": "250.0",
-      "invoice_target_twd": "313",
-      "planned_usdt": "9.87",
+      "invoice_target_twd": "625",
+      "planned_usdt": "19.70",
       "convert_supported": true,
-      "target_eligible": true,
+      "target_eligible": false,
       "today_status": "filled",
-      "note": "只做 USDT/TWD；目前最低 8 USDT／新台幣 250 元；程式以 NT$ 313 為開票成交目標。"
+      "note": "已停止每日交易；保留成交歷史與發票確認紀錄。",
+      "trading_enabled": false
     }
   ],
   "events": [
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "sell",
+      "execution_type": "spot",
+      "requested_usdt": "19.7",
+      "filled_usdt": "19.7",
+      "avg_price_twd": "31.72898477157360406091370558",
+      "invoice_status": "pending_confirmation",
+      "message": "賣出：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-09-14T11:41:26+08:00",
+      "id": "1329e801b85f521a",
+      "date": "2026-09-14"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -1292,8 +1310,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-09-13",
-    "yesterday_date": "2026-09-12",
+    "today_date": "2026-09-14",
+    "yesterday_date": "2026-09-13",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -1301,12 +1319,12 @@
         "short_name": "BP",
         "accent": "#2f6bff",
         "today_trade": {
-          "status": "filled",
-          "side": "buy",
-          "execution_type": "spot",
-          "filled_usdt": "1",
-          "message": "買入：訂單已全數成交；等待電子發票開立通知",
-          "source": "live_record"
+          "status": "no_record",
+          "side": "none",
+          "execution_type": "none",
+          "filled_usdt": "0",
+          "message": "今日尚未執行或保存成交檢查",
+          "source": "none"
         },
         "yesterday_invoice": {
           "status": "pending_confirmation",
@@ -1328,7 +1346,7 @@
           "status": "filled",
           "side": "sell",
           "execution_type": "spot",
-          "filled_usdt": "9.87",
+          "filled_usdt": "19.7",
           "message": "賣出：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },

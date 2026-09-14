@@ -608,6 +608,25 @@
         "filled_usdt": "9.87",
         "avg_price_twd": "31.71296859169199594731509625"
       }
+    },
+    "2026-09-14": {
+      "max": {
+        "status": "filled",
+        "side": "sell",
+        "execution_type": "spot",
+        "filled_usdt": "19.7",
+        "avg_price_twd": "31.72898477157360406091370558"
+      }
+    }
+  },
+  "max_test_attempts": {
+    "2026-09-14": {
+      "started_at": "2026-09-14T11:41:21+08:00",
+      "target_twd": "625",
+      "status": "filled",
+      "filled_usdt": "19.7",
+      "avg_price_twd": "31.72898477157360406091370558",
+      "turnover_twd": "625.061"
     }
   }
 }
