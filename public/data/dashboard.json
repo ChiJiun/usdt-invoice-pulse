@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-09-15T14:11:22+08:00",
-  "local_date": "2026-09-15",
+  "generated_at": "2026-09-16T14:04:55+08:00",
+  "local_date": "2026-09-16",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 1,
-    "pending_invoice_checks": 79,
-    "total_filled_usdt": "386.32995799",
+    "pending_invoice_checks": 80,
+    "total_filled_usdt": "394.21495799",
     "today_trades": 1,
     "yesterday_invoices_issued": 0
   },
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.8778",
+      "planned_usdt": "7.885",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -51,6 +51,35 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.885",
+      "filled_usdt": "7.885",
+      "avg_price_twd": "31.87301782",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-09-16T14:05:01+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.5026374910214",
+      "actual_fee": "0.01577001",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.01577001",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "fc26dbd4d605608f",
+      "date": "2026-09-16"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -1375,8 +1404,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-09-15",
-    "yesterday_date": "2026-09-14",
+    "today_date": "2026-09-16",
+    "yesterday_date": "2026-09-15",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -1387,7 +1416,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.8778",
+          "filled_usdt": "7.885",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
@@ -1416,14 +1445,14 @@
           "source": "none"
         },
         "yesterday_invoice": {
-          "status": "pending_confirmation",
+          "status": "not_applicable",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
-          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
+          "note": "昨日沒有保存到正式成交紀錄"
         }
       }
     ]

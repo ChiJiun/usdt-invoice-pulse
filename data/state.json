@@ -659,6 +659,28 @@
         "fee_source": "order",
         "actual_fee_twd": null
       }
+    },
+    "2026-09-16": {
+      "bitopro": {
+        "status": "filled",
+        "side": "buy",
+        "execution_type": "spot",
+        "filled_usdt": "7.885",
+        "avg_price_twd": "31.87301782",
+        "fee_target_twd": "0.5",
+        "estimated_fee_twd": "0.5026374910214",
+        "actual_fee": "0.01577001",
+        "fee_currency": "usdt",
+        "actual_fees": [
+          {
+            "amount": "0.01577001",
+            "currency": "usdt"
+          }
+        ],
+        "fee_complete": true,
+        "fee_source": "order",
+        "actual_fee_twd": null
+      }
     }
   },
   "max_test_attempts": {
