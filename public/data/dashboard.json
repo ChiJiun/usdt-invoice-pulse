@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-16T16:11:36+08:00",
-  "local_date": "2026-09-16",
+  "generated_at": "2026-09-17T14:10:28+08:00",
+  "local_date": "2026-09-17",
   "timezone": "Asia/Taipei",
-  "mode": "dry_run",
+  "mode": "live",
   "strategy": "fee_target",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 80,
-    "total_filled_usdt": "421.78875799",
-    "today_trades": 1,
+    "pending_invoice_checks": 82,
+    "total_filled_usdt": "449.32045799",
+    "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
   "exchanges": [
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.8738",
+      "planned_usdt": "7.8617",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -42,15 +42,73 @@
       "fee_rate": "0.0016",
       "turnover_target_twd": "625",
       "trade_policy": "buy_only",
-      "planned_usdt": "19.7",
+      "planned_usdt": "19.67",
       "convert_supported": false,
       "target_eligible": true,
-      "today_status": "simulated",
+      "today_status": "filled",
       "note": "只買 USDT/TWD；以 NT$ 1 預估手續費為目標，TWD 不足就略過；不賣 USDT、不閃兌、不保證開票。",
       "trading_enabled": true
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.8617",
+      "filled_usdt": "7.8617",
+      "avg_price_twd": "31.975",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-09-17T14:10:32+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.502755715",
+      "actual_fee": "0.0157234",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.0157234",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "c233659b2b96ec0d",
+      "date": "2026-09-17"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "19.67",
+      "filled_usdt": "19.67",
+      "avg_price_twd": "31.95002541942043721403152008",
+      "invoice_status": "pending_confirmation",
+      "message": "買入已全數成交；發票待實際開立確認",
+      "mode": "live",
+      "occurred_at": "2026-09-17T14:10:37+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": "1.0055312",
+      "actual_fee": "0.031472",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.031472",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order_trades",
+      "actual_fee_twd": null,
+      "id": "14322eb85533f78f",
+      "date": "2026-09-17"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -1452,8 +1510,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-09-16",
-    "yesterday_date": "2026-09-15",
+    "today_date": "2026-09-17",
+    "yesterday_date": "2026-09-16",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -1464,7 +1522,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.885",
+          "filled_usdt": "7.8617",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
@@ -1485,12 +1543,12 @@
         "short_name": "MAX",
         "accent": "#1aa679",
         "today_trade": {
-          "status": "simulated",
+          "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "19.7",
-          "message": "依 NT$ 1 手續費目標換算買入量；正式模式只在 TWD 足夠時買入，不賣出、不閃兌；不保證開票",
-          "source": "dry_run"
+          "filled_usdt": "19.67",
+          "message": "買入已全數成交；發票待實際開立確認",
+          "source": "live_record"
         },
         "yesterday_invoice": {
           "status": "not_applicable",
