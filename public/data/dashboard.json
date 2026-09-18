@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-09-17T14:10:28+08:00",
-  "local_date": "2026-09-17",
+  "generated_at": "2026-09-18T13:58:05+08:00",
+  "local_date": "2026-09-18",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 82,
-    "total_filled_usdt": "449.32045799",
-    "today_trades": 2,
+    "pending_invoice_checks": 83,
+    "total_filled_usdt": "457.21615799",
+    "today_trades": 1,
     "yesterday_invoices_issued": 0
   },
   "exchanges": [
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.8617",
+      "planned_usdt": "7.8957",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -42,15 +42,68 @@
       "fee_rate": "0.0016",
       "turnover_target_twd": "625",
       "trade_policy": "buy_only",
-      "planned_usdt": "19.67",
+      "planned_usdt": "19.74",
       "convert_supported": false,
       "target_eligible": true,
-      "today_status": "filled",
+      "today_status": "skipped",
       "note": "只買 USDT/TWD；以 NT$ 1 預估手續費為目標，TWD 不足就略過；不賣 USDT、不閃兌、不保證開票。",
       "trading_enabled": true
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.8957",
+      "filled_usdt": "7.8957",
+      "avg_price_twd": "31.826",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-09-18T13:58:11+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.5025770964",
+      "actual_fee": "0.0157914",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.0157914",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "975c239661a9efec",
+      "date": "2026-09-18"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "skipped",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "19.74",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "MAX 只買入：可用 TWD 330.585736 元，計畫需約 632.38 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
+      "mode": "live",
+      "occurred_at": "2026-09-18T13:58:14+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": null,
+      "actual_fee": null,
+      "fee_currency": null,
+      "actual_fees": [],
+      "fee_complete": false,
+      "fee_source": null,
+      "actual_fee_twd": null,
+      "id": "e2f8051207e8d41a",
+      "date": "2026-09-18"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -1510,8 +1563,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-09-17",
-    "yesterday_date": "2026-09-16",
+    "today_date": "2026-09-18",
+    "yesterday_date": "2026-09-17",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -1522,7 +1575,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.8617",
+          "filled_usdt": "7.8957",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
@@ -1543,22 +1596,22 @@
         "short_name": "MAX",
         "accent": "#1aa679",
         "today_trade": {
-          "status": "filled",
-          "side": "buy",
-          "execution_type": "spot",
-          "filled_usdt": "19.67",
-          "message": "買入已全數成交；發票待實際開立確認",
+          "status": "skipped",
+          "side": "none",
+          "execution_type": "none",
+          "filled_usdt": "0",
+          "message": "MAX 只買入：可用 TWD 330.585736 元，計畫需約 632.38 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
           "source": "live_record"
         },
         "yesterday_invoice": {
-          "status": "not_applicable",
+          "status": "pending_confirmation",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
-          "note": "昨日沒有保存到正式成交紀錄"
+          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
         }
       }
     ]
