@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-11-01T15:36:27+08:00",
-  "local_date": "2026-11-01",
+  "generated_at": "2026-11-02T15:42:26+08:00",
+  "local_date": "2026-11-02",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 2,
-    "pending_invoice_checks": 130,
-    "total_filled_usdt": "978.71055799",
+    "pending_invoice_checks": 131,
+    "total_filled_usdt": "986.40595799",
     "today_trades": 1,
     "yesterday_invoices_issued": 0
   },
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.6439",
+      "planned_usdt": "7.6954",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -42,7 +42,7 @@
       "fee_rate": "0.0016",
       "turnover_target_twd": "625",
       "trade_policy": "buy_only",
-      "planned_usdt": "19.15",
+      "planned_usdt": "19.24",
       "convert_supported": false,
       "target_eligible": true,
       "today_status": "skipped",
@@ -51,6 +51,59 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.6954",
+      "filled_usdt": "7.6954",
+      "avg_price_twd": "32.658",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-11-02T15:42:31+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.5026327464",
+      "actual_fee": "0.0153908",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.0153908",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "b7db7212f5deea7b",
+      "date": "2026-11-02"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "skipped",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "19.24",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "MAX 只買入：可用 TWD 0.013736 元，計畫需約 632.36 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
+      "mode": "live",
+      "occurred_at": "2026-11-02T15:42:33+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": null,
+      "actual_fee": null,
+      "fee_currency": null,
+      "actual_fees": [],
+      "fee_complete": false,
+      "fee_source": null,
+      "actual_fee_twd": null,
+      "id": "da9809d7320823c1",
+      "date": "2026-11-02"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -3918,8 +3971,8 @@
     }
   ],
   "daily_status": {
-    "today_date": "2026-11-01",
-    "yesterday_date": "2026-10-31",
+    "today_date": "2026-11-02",
+    "yesterday_date": "2026-11-01",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -3930,7 +3983,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.6439",
+          "filled_usdt": "7.6954",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
@@ -3955,18 +4008,18 @@
           "side": "none",
           "execution_type": "none",
           "filled_usdt": "0",
-          "message": "MAX 只買入：可用 TWD 0.013736 元，計畫需約 632.54 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
+          "message": "MAX 只買入：可用 TWD 0.013736 元，計畫需約 632.36 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
           "source": "live_record"
         },
         "yesterday_invoice": {
-          "status": "pending_confirmation",
+          "status": "not_applicable",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.maicoin.com/zh-TW/support/solutions/articles/32000026066",
-          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
+          "note": "昨日沒有保存到正式成交紀錄"
         }
       }
     ]
