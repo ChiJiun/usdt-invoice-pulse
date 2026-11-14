@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-13T16:03:31+08:00",
-  "local_date": "2026-11-13",
+  "generated_at": "2026-11-14T15:37:48+08:00",
+  "local_date": "2026-11-14",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
@@ -8,7 +8,7 @@
     "exchanges_total": 2,
     "target_eligible": 2,
     "pending_invoice_checks": 133,
-    "total_filled_usdt": "1159.9273",
+    "total_filled_usdt": "1177.5663",
     "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.6095",
+      "planned_usdt": "7.609",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -51,6 +51,64 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.609",
+      "filled_usdt": "7.609",
+      "avg_price_twd": "33.024",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-11-14T15:37:53+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.502559232",
+      "actual_fee": "0.015218",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.015218",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "aed955a129e9c72f",
+      "date": "2026-11-14"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "19.03",
+      "filled_usdt": "19.03",
+      "avg_price_twd": "33.02101944298476090383604834",
+      "invoice_status": "pending_confirmation",
+      "message": "買入已全數成交；發票待實際開立確認",
+      "mode": "live",
+      "occurred_at": "2026-11-14T15:37:58+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": "1.005424",
+      "actual_fee": "0.030448",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.030448",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order_trades",
+      "actual_fee_twd": null,
+      "id": "4c14bf8837a322ae",
+      "date": "2026-11-14"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -4244,43 +4302,11 @@
       "occurred_at": "2026-08-17T10:35:06+08:00",
       "id": "9532de3a7a8a724c",
       "date": "2026-08-17"
-    },
-    {
-      "exchange": "bitopro",
-      "exchange_name": "BitoPro",
-      "status": "filled",
-      "side": "buy",
-      "execution_type": "spot",
-      "requested_usdt": "1",
-      "filled_usdt": "1",
-      "avg_price_twd": "32.071",
-      "invoice_status": "pending_confirmation",
-      "message": "買入：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-16T10:35:30+08:00",
-      "id": "3f651527509c5231",
-      "date": "2026-08-16"
-    },
-    {
-      "exchange": "max",
-      "exchange_name": "MAX Exchange",
-      "status": "filled",
-      "side": "sell",
-      "execution_type": "spot",
-      "requested_usdt": "8",
-      "filled_usdt": "8",
-      "avg_price_twd": "32.057",
-      "invoice_status": "pending_confirmation",
-      "message": "賣出：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-16T10:35:36+08:00",
-      "id": "2a7d086689713443",
-      "date": "2026-08-16"
     }
   ],
   "daily_status": {
-    "today_date": "2026-11-13",
-    "yesterday_date": "2026-11-12",
+    "today_date": "2026-11-14",
+    "yesterday_date": "2026-11-13",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -4291,7 +4317,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.6095",
+          "filled_usdt": "7.609",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
