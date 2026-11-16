@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-11-15T15:53:47+08:00",
-  "local_date": "2026-11-15",
+  "generated_at": "2026-11-16T16:01:25+08:00",
+  "local_date": "2026-11-16",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
@@ -8,7 +8,7 @@
     "exchanges_total": 2,
     "target_eligible": 2,
     "pending_invoice_checks": 133,
-    "total_filled_usdt": "1195.0929",
+    "total_filled_usdt": "1212.7198",
     "today_trades": 2,
     "yesterday_invoices_issued": 0
   },
@@ -20,7 +20,7 @@
       "accent": "#2f6bff",
       "minimum_usdt": "1",
       "minimum_twd": null,
-      "planned_usdt": "7.5866",
+      "planned_usdt": "7.6069",
       "fee_target_twd": "0.5",
       "fee_rate": "0.002",
       "turnover_target_twd": "250",
@@ -42,7 +42,7 @@
       "fee_rate": "0.0016",
       "turnover_target_twd": "625",
       "trade_policy": "buy_only",
-      "planned_usdt": "18.94",
+      "planned_usdt": "19.02",
       "convert_supported": false,
       "target_eligible": true,
       "today_status": "filled",
@@ -51,6 +51,64 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "7.6069",
+      "filled_usdt": "7.6069",
+      "avg_price_twd": "33.033",
+      "invoice_status": "pending_confirmation",
+      "message": "買入：訂單已全數成交；等待電子發票開立通知",
+      "mode": "live",
+      "occurred_at": "2026-11-16T16:01:30+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": "0.5025574554",
+      "actual_fee": "0.0152138",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.0152138",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order",
+      "actual_fee_twd": null,
+      "id": "d1f4cc9dd05f6ade",
+      "date": "2026-11-16"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "filled",
+      "side": "buy",
+      "execution_type": "spot",
+      "requested_usdt": "19.02",
+      "filled_usdt": "19.02",
+      "avg_price_twd": "33.03201892744479495268138801",
+      "invoice_status": "pending_confirmation",
+      "message": "買入已全數成交；發票待實際開立確認",
+      "mode": "live",
+      "occurred_at": "2026-11-16T16:01:35+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": "1.0052304",
+      "actual_fee": "0.030432",
+      "fee_currency": "usdt",
+      "actual_fees": [
+        {
+          "amount": "0.030432",
+          "currency": "usdt"
+        }
+      ],
+      "fee_complete": true,
+      "fee_source": "order_trades",
+      "actual_fee_twd": null,
+      "id": "ada4d33bb27caf9c",
+      "date": "2026-11-16"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -4296,43 +4354,11 @@
       "occurred_at": "2026-08-19T10:32:39+08:00",
       "id": "5b8209c01a1c6406",
       "date": "2026-08-19"
-    },
-    {
-      "exchange": "bitopro",
-      "exchange_name": "BitoPro",
-      "status": "filled",
-      "side": "buy",
-      "execution_type": "spot",
-      "requested_usdt": "1",
-      "filled_usdt": "1",
-      "avg_price_twd": "31.845",
-      "invoice_status": "pending_confirmation",
-      "message": "買入：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-18T10:30:00+08:00",
-      "id": "62c6511c60dc5627",
-      "date": "2026-08-18"
-    },
-    {
-      "exchange": "max",
-      "exchange_name": "MAX Exchange",
-      "status": "filled",
-      "side": "sell",
-      "execution_type": "spot",
-      "requested_usdt": "8",
-      "filled_usdt": "8",
-      "avg_price_twd": "31.839",
-      "invoice_status": "pending_confirmation",
-      "message": "賣出：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-18T10:30:05+08:00",
-      "id": "59f3eb6272bec269",
-      "date": "2026-08-18"
     }
   ],
   "daily_status": {
-    "today_date": "2026-11-15",
-    "yesterday_date": "2026-11-14",
+    "today_date": "2026-11-16",
+    "yesterday_date": "2026-11-15",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -4343,7 +4369,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "7.5866",
+          "filled_usdt": "7.6069",
           "message": "買入：訂單已全數成交；等待電子發票開立通知",
           "source": "live_record"
         },
@@ -4367,7 +4393,7 @@
           "status": "filled",
           "side": "buy",
           "execution_type": "spot",
-          "filled_usdt": "18.94",
+          "filled_usdt": "19.02",
           "message": "買入已全數成交；發票待實際開立確認",
           "source": "live_record"
         },
