@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-11-20T16:36:38+08:00",
-  "local_date": "2026-11-20",
+  "generated_at": "2026-11-21T16:19:03+08:00",
+  "local_date": "2026-11-21",
   "timezone": "Asia/Taipei",
   "mode": "live",
   "strategy": "fee_target",
   "summary": {
     "exchanges_total": 2,
     "target_eligible": 1,
-    "pending_invoice_checks": 129,
-    "total_filled_usdt": "1218.6535",
+    "pending_invoice_checks": 127,
+    "total_filled_usdt": "1209.6535",
     "today_trades": 0,
     "yesterday_invoices_issued": 0
   },
@@ -42,7 +42,7 @@
       "fee_rate": "0.0016",
       "turnover_target_twd": "625",
       "trade_policy": "buy_only",
-      "planned_usdt": "19.02",
+      "planned_usdt": "18.95",
       "convert_supported": false,
       "target_eligible": true,
       "today_status": "skipped",
@@ -51,6 +51,54 @@
     }
   ],
   "events": [
+    {
+      "exchange": "bitopro",
+      "exchange_name": "BitoPro",
+      "status": "failed",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "1",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "執行失敗：交易所 API 拒絕請求：HTTP 403",
+      "mode": "live",
+      "occurred_at": "2026-11-21T16:19:04+08:00",
+      "fee_target_twd": "0.5",
+      "estimated_fee_twd": null,
+      "actual_fee": null,
+      "fee_currency": null,
+      "actual_fees": [],
+      "fee_complete": false,
+      "fee_source": null,
+      "actual_fee_twd": null,
+      "id": "53aa06e0ee9fce0c",
+      "date": "2026-11-21"
+    },
+    {
+      "exchange": "max",
+      "exchange_name": "MAX Exchange",
+      "status": "skipped",
+      "side": "none",
+      "execution_type": "none",
+      "requested_usdt": "18.95",
+      "filled_usdt": "0",
+      "avg_price_twd": null,
+      "invoice_status": "not_applicable",
+      "message": "MAX 只買入：可用 TWD 167.809736 元，計畫需約 632.49 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
+      "mode": "live",
+      "occurred_at": "2026-11-21T16:19:05+08:00",
+      "fee_target_twd": "1",
+      "estimated_fee_twd": null,
+      "actual_fee": null,
+      "fee_currency": null,
+      "actual_fees": [],
+      "fee_complete": false,
+      "fee_source": null,
+      "actual_fee_twd": null,
+      "id": "711802353cf72593",
+      "date": "2026-11-21"
+    },
     {
       "exchange": "bitopro",
       "exchange_name": "BitoPro",
@@ -4406,43 +4454,11 @@
       "occurred_at": "2026-08-24T10:38:03+08:00",
       "id": "111cd3ce52f0caaf",
       "date": "2026-08-24"
-    },
-    {
-      "exchange": "bitopro",
-      "exchange_name": "BitoPro",
-      "status": "filled",
-      "side": "buy",
-      "execution_type": "spot",
-      "requested_usdt": "1",
-      "filled_usdt": "1",
-      "avg_price_twd": "31.974",
-      "invoice_status": "pending_confirmation",
-      "message": "買入：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-23T10:37:44+08:00",
-      "id": "e28038a2cecc2093",
-      "date": "2026-08-23"
-    },
-    {
-      "exchange": "max",
-      "exchange_name": "MAX Exchange",
-      "status": "filled",
-      "side": "buy",
-      "execution_type": "spot",
-      "requested_usdt": "8",
-      "filled_usdt": "8",
-      "avg_price_twd": "31.978",
-      "invoice_status": "pending_confirmation",
-      "message": "買入：訂單已全數成交；等待電子發票開立通知",
-      "mode": "live",
-      "occurred_at": "2026-08-23T10:37:50+08:00",
-      "id": "ecc1a761fb553b51",
-      "date": "2026-08-23"
     }
   ],
   "daily_status": {
-    "today_date": "2026-11-20",
-    "yesterday_date": "2026-11-19",
+    "today_date": "2026-11-21",
+    "yesterday_date": "2026-11-20",
     "exchanges": [
       {
         "exchange": "bitopro",
@@ -4458,14 +4474,14 @@
           "source": "live_record"
         },
         "yesterday_invoice": {
-          "status": "pending_confirmation",
+          "status": "not_applicable",
           "checked_at": null,
           "issued_date": null,
           "amount_twd": null,
           "masked_number": null,
           "detail_url": null,
           "lookup_url": "https://support.bitopro.com/hc/zh-tw/articles/360018704812",
-          "note": "昨日有正式成交，但交易所發票 API 不可用，等待 Email／載具確認"
+          "note": "昨日沒有保存到正式成交紀錄"
         }
       },
       {
@@ -4478,7 +4494,7 @@
           "side": "none",
           "execution_type": "none",
           "filled_usdt": "0",
-          "message": "MAX 只買入：可用 TWD 167.809736 元，計畫需約 632.57 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
+          "message": "MAX 只買入：可用 TWD 167.809736 元，計畫需約 632.49 元（含價格與費用緩衝）；本日略過，不賣 USDT、不閃兌",
           "source": "live_record"
         },
         "yesterday_invoice": {
